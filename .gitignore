@@ -1,0 +1,17 @@
+# Outillage local (AgentsRoom / Claude) — ne concerne pas le plugin
+.agentsroom/
+.claude/
+.mcp.json
+
+# macOS
+.DS_Store
+._*
+
+# Sauvegardes générées par le plugin
+backups/
+*.zip
+
+# Éditeurs
+.vscode/
+.idea/
+*.swp
