@@ -15,3 +15,5 @@ backups/
 .vscode/
 .idea/
 *.swp
+.agentsroom/handoff-transcript-*.txt
+.agentsroom/handoff-summary-*.md

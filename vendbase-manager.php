@@ -3,7 +3,7 @@
  * Plugin Name: YounessWeb Manager
  * Plugin URI:  https://younesweb.ma
  * Description: إدارة مشاريع يونس ويب — تتبع العملاء، المشاريع، الإحصائيات والدépenses
- * Version:     2.3.0
+ * Version:     2.4.0
  * Author:      Younes Web
  * Text Domain: vendbase
  * License:     GPL2
@@ -11,7 +11,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'VB_VERSION',    '2.3.0' );
+define( 'VB_VERSION',    '2.4.0' );
 define( 'VB_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VB_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -21,6 +21,7 @@ require_once VB_PLUGIN_DIR . 'includes/meta-fields.php';
 require_once VB_PLUGIN_DIR . 'includes/admin-menu.php';
 require_once VB_PLUGIN_DIR . 'includes/ajax.php';
 require_once VB_PLUGIN_DIR . 'includes/rest.php';
+require_once VB_PLUGIN_DIR . 'includes/roi.php';
 require_once VB_PLUGIN_DIR . 'includes/backup.php';
 require_once VB_PLUGIN_DIR . 'includes/updater.php';
 require_once VB_PLUGIN_DIR . 'includes/enqueue.php';

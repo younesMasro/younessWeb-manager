@@ -14,6 +14,7 @@ function vb_register_menus() {
     add_submenu_page( 'vendbase', 'Editer',           '',                  'manage_options', 'vendbase-edit',     'vb_page_form'      );
     add_submenu_page( 'vendbase', 'Statistiques',     'Statistiques',      'manage_options', 'vendbase-stats',    'vb_page_stats'     );
     add_submenu_page( 'vendbase', 'Depenses',         'Depenses & Pub',    'manage_options', 'vendbase-expenses', 'vb_page_expenses'  );
+    add_submenu_page( 'vendbase', 'Rentabilite pub',  '📈 Rentabilite ROI','manage_options', 'vendbase-roi',      'vb_page_roi'       );
     add_submenu_page( 'vendbase', 'Suivi mensuel',    '🔔 Suivi clients',  'manage_options', 'vendbase-tracking', 'vb_page_tracking'  );
     add_submenu_page( 'vendbase', 'Calendrier',       'Calendrier',        'manage_options', 'vendbase-calendar', 'vb_page_calendar'  );
     add_submenu_page( 'vendbase', 'Factures',         'Factures & Devis',  'manage_options', 'vendbase-invoices', 'vb_page_invoices'  );
@@ -59,6 +60,7 @@ function vb_page_projects()  { require VB_PLUGIN_DIR . 'templates/projects.php';
 function vb_page_form()      { require VB_PLUGIN_DIR . 'templates/form.php';       }
 function vb_page_stats()     { require VB_PLUGIN_DIR . 'templates/stats.php';      }
 function vb_page_expenses()  { require VB_PLUGIN_DIR . 'templates/expenses.php';   }
+function vb_page_roi()       { require VB_PLUGIN_DIR . 'templates/roi.php';        }
 function vb_page_tracking()  { require VB_PLUGIN_DIR . 'templates/tracking.php';   }
 function vb_page_calendar()  { require VB_PLUGIN_DIR . 'templates/calendar.php';   }
 function vb_page_invoices()  { require VB_PLUGIN_DIR . 'templates/invoices.php';   }
