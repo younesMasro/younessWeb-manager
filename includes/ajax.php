@@ -199,3 +199,40 @@ add_action('wp_ajax_vb_regenerate_lead_secret', function() {
     update_option('vb_lead_api_secret', $secret, false);
     wp_send_json_success(['secret' => $secret]);
 });
+
+/* ── CRM Leads : priorité (v2.5) ── */
+add_action('wp_ajax_vb_update_lead_priority', function() {
+    check_ajax_referer('vb_nonce', 'nonce');
+    if ( ! current_user_can('manage_options') ) wp_send_json_error('Unauthorized');
+    $id       = intval($_POST['id'] ?? 0);
+    $priority = sanitize_text_field($_POST['priority'] ?? '');
+    if ( ! array_key_exists($priority, vb_lead_priorities()) ) wp_send_json_error('Priorité invalide');
+    vb_update_lead($id, ['priority' => $priority]) ? wp_send_json_success() : wp_send_json_error('Erreur');
+});
+
+/* ── CRM Leads : assignation (future) ── */
+add_action('wp_ajax_vb_update_lead_assignee', function() {
+    check_ajax_referer('vb_nonce', 'nonce');
+    if ( ! current_user_can('manage_options') ) wp_send_json_error('Unauthorized');
+    $id = intval($_POST['id'] ?? 0);
+    vb_update_lead($id, ['assigned_to' => wp_unslash($_POST['assigned_to'] ?? '')])
+        ? wp_send_json_success() : wp_send_json_error('Erreur');
+});
+
+/* ── CRM Leads : archiver / désarchiver ── */
+add_action('wp_ajax_vb_archive_lead', function() {
+    check_ajax_referer('vb_nonce', 'nonce');
+    if ( ! current_user_can('manage_options') ) wp_send_json_error('Unauthorized');
+    $id       = intval($_POST['id'] ?? 0);
+    $archived = ! empty($_POST['archived']) ? 1 : 0;
+    vb_update_lead($id, ['archived' => $archived]) ? wp_send_json_success() : wp_send_json_error('Erreur');
+});
+
+/* ── CRM Leads : régénérer la clé API WhatsApp ── */
+add_action('wp_ajax_vb_regenerate_whatsapp_secret', function() {
+    check_ajax_referer('vb_nonce', 'nonce');
+    if ( ! current_user_can('manage_options') ) wp_send_json_error('Unauthorized');
+    $secret = wp_generate_password(48, false, false);
+    update_option('vb_whatsapp_api_secret', $secret, false);
+    wp_send_json_success(['secret' => $secret]);
+});

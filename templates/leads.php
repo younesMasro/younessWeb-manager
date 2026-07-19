@@ -1,39 +1,91 @@
 <?php
 /**
- * v2.2 — Demandes clients (leads) reçues via le formulaire de younessweb.com
+ * v2.5 — Leads CRM (Inbox)
+ * Demandes reçues de DEUX sources : formulaire du site + agent WhatsApp IA.
  */
 if ( ! defined('ABSPATH') ) exit;
 
-$search  = sanitize_text_field($_GET['s'] ?? '');
-$status  = sanitize_text_field($_GET['status'] ?? '');
-$type    = sanitize_text_field($_GET['type'] ?? '');
-$year    = sanitize_text_field($_GET['year'] ?? date('Y'));
+// --- Filtres ---
+$f = [
+    'search'            => sanitize_text_field($_GET['s'] ?? ''),
+    'source'            => sanitize_text_field($_GET['source'] ?? ''),
+    'priority'          => sanitize_text_field($_GET['priority'] ?? ''),
+    'website_type'      => sanitize_text_field($_GET['type'] ?? ''),
+    'language'          => sanitize_text_field($_GET['lang'] ?? ''),
+    'status'            => sanitize_text_field($_GET['status'] ?? ''),
+    'maintenance'       => isset($_GET['maint']) && $_GET['maint'] !== '' ? sanitize_text_field($_GET['maint']) : '',
+    'preferred_contact' => sanitize_text_field($_GET['contact'] ?? ''),
+    'date_from'         => sanitize_text_field($_GET['from'] ?? ''),
+    'date_to'           => sanitize_text_field($_GET['to'] ?? ''),
+    'archived'          => !empty($_GET['archived']) ? '1' : '0',
+];
 
-$leads   = vb_get_leads([
-    'search'       => $search,
-    'status'       => $status,
-    'website_type' => $type,
-    'year'         => $year,
-]);
-$lstats  = vb_get_leads_stats('', $year);
+$leads = vb_get_leads($f);
+$stats = vb_get_leads_stats();
 
-$statuses   = vb_lead_statuses();
-$type_labels    = vb_lead_website_types();
-$package_labels = vb_lead_packages();
-$domain_labels  = vb_lead_domain_statuses();
+// --- Référentiels ---
+$L_status  = vb_lead_statuses();
+$L_source  = vb_lead_sources();
+$L_prio    = vb_lead_priorities();
+$L_lang    = vb_lead_languages();
+$L_type    = vb_lead_website_types();
+$L_ptype   = vb_lead_project_types();
+$L_domain  = vb_lead_domain_statuses();
+$L_content = vb_lead_content_readiness();
+$L_contact = vb_lead_contact_prefs();
+$L_pkg     = vb_lead_packages();
 
-$total     = intval($lstats->total ?? 0);
-$new_c     = intval($lstats->new_count ?? 0);
-$won_c     = intval($lstats->won_count ?? 0);
-$pipeline  = floatval($lstats->pipeline_value ?? 0);
-$avg_resp  = $lstats->avg_response_hours !== null ? floatval($lstats->avg_response_hours) : null;
-$conv_rate = $total > 0 ? round(($won_c / $total) * 100) : 0;
+$total      = intval($stats->total ?? 0);
+$wa_count   = intval($stats->whatsapp_count ?? 0);
+$web_count  = intval($stats->website_count ?? 0);
+$new_c      = intval($stats->new_count ?? 0);
+$high_open  = intval($stats->high_priority_open ?? 0);
+$won_c      = intval($stats->won_count ?? 0);
+$conv_rate  = $total > 0 ? round(($won_c / $total) * 100) : 0;
 
-/** Normalise un numéro marocain vers le format wa.me. */
-function vb_lead_wa_number( $phone ) {
-    $n = preg_replace('/[^0-9]/', '', $phone);
-    if ( strlen($n) === 10 && $n[0] === '0' ) $n = '212' . substr($n, 1);
-    return $n;
+if ( ! function_exists('vb_lead_wa_number') ) {
+    function vb_lead_wa_number( $phone ) {
+        $n = preg_replace('/[^0-9]/', '', $phone);
+        if ( strlen($n) === 10 && $n[0] === '0' ) $n = '212' . substr($n, 1);
+        return $n;
+    }
+}
+
+// Construit le jeu de données JS pour le panneau de détail (labels pré-calculés).
+$leads_js = [];
+foreach ( $leads as $l ) {
+    $src = vb_normalize_lead_source($l->source);
+    $leads_js[$l->id] = [
+        'id'         => $l->id,
+        'reference'  => $l->reference,
+        'name'       => $l->full_name,
+        'phone'      => $l->phone,
+        'wa'         => vb_lead_wa_number($l->phone),
+        'email'      => $l->email,
+        'source'     => $src,
+        'source_lbl' => $L_source[$src]['label'] ?? $src,
+        'source_ico' => $L_source[$src]['icon'] ?? '',
+        'priority'   => $l->priority ?: 'medium',
+        'lang'       => $l->locale,
+        'lang_lbl'   => $L_lang[$l->locale] ?? ($l->locale ? strtoupper($l->locale) : '—'),
+        'type_lbl'   => $L_type[$l->website_type] ?? ($l->website_type ?: '—'),
+        'ptype_lbl'  => $L_ptype[$l->project_type] ?? ($l->project_type ?: '—'),
+        'products'   => $l->products_count ?: '—',
+        'domain_lbl' => $L_domain[$l->domain_status] ?? ($l->domain_status ?: '—'),
+        'content_lbl'=> $L_content[$l->content_ready] ?? ($l->content_ready ?: '—'),
+        'maint'      => intval($l->maintenance),
+        'contact_lbl'=> $L_contact[$l->preferred_contact] ?? ($l->preferred_contact ?: '—'),
+        'pkg_lbl'    => $L_pkg[$l->package_interest] ?? '',
+        'status'     => $l->status,
+        'status_lbl' => $L_status[$l->status]['label'] ?? $l->status,
+        'quoted'     => floatval($l->quoted_price),
+        'note'       => $l->internal_note,
+        'message'    => $l->message,
+        'assigned'   => $l->assigned_to,
+        'created'    => date('d/m/Y H:i', strtotime($l->created_at)),
+        'contacted'  => $l->first_contact_at ? date('d/m/Y H:i', strtotime($l->first_contact_at)) : '',
+        'project_id' => intval($l->project_id),
+    ];
 }
 ?>
 <div class="vb-wrap">
@@ -42,13 +94,15 @@ function vb_lead_wa_number( $phone ) {
     <div class="vb-header-left">
         <img src="<?= VB_PLUGIN_URL ?>assets/img/logo.png" class="vb-logo" alt="">
         <div>
-            <h1 class="vb-page-title">📩 Demandes clients</h1>
-            <span class="vb-page-sub">Formulaire de contact de younessweb.com — du premier message au projet signé</span>
+            <h1 class="vb-page-title">📥 Leads CRM</h1>
+            <span class="vb-page-sub">Toutes les demandes entrantes — site web &amp; agent WhatsApp IA</span>
         </div>
     </div>
     <div class="vb-header-right">
+        <a href="<?= admin_url('admin.php?page=vendbase-leads' . ($f['archived']==='1' ? '' : '&archived=1')) ?>"
+           class="vb-btn vb-btn-ghost"><?= $f['archived']==='1' ? '← Actifs' : '🗄️ Archivés' ?></a>
         <button class="vb-btn vb-btn-secondary" id="vb-show-api-config">
-            <span class="dashicons dashicons-admin-network"></span> Connexion au site
+            <span class="dashicons dashicons-admin-network"></span> Connexions API
         </button>
     </div>
 </div>
@@ -59,88 +113,122 @@ function vb_lead_wa_number( $phone ) {
         <div class="vb-stat-icon"><span class="dashicons dashicons-email-alt"></span></div>
         <div class="vb-stat-body">
             <div class="vb-stat-value"><?= $total ?></div>
-            <div class="vb-stat-label">Demandes reçues en <?= esc_html($year) ?></div>
+            <div class="vb-stat-label">Leads actifs</div>
+        </div>
+    </div>
+    <div class="vb-stat-card vb-card-green">
+        <div class="vb-stat-icon"><span class="dashicons dashicons-whatsapp"></span></div>
+        <div class="vb-stat-body">
+            <div class="vb-stat-value"><?= $wa_count ?></div>
+            <div class="vb-stat-label">💬 WhatsApp</div>
+        </div>
+    </div>
+    <div class="vb-stat-card vb-card-teal">
+        <div class="vb-stat-icon"><span class="dashicons dashicons-admin-site-alt3"></span></div>
+        <div class="vb-stat-body">
+            <div class="vb-stat-value"><?= $web_count ?></div>
+            <div class="vb-stat-label">🌐 Site web</div>
         </div>
     </div>
     <div class="vb-stat-card vb-card-red">
+        <div class="vb-stat-icon"><span class="dashicons dashicons-warning"></span></div>
+        <div class="vb-stat-body">
+            <div class="vb-stat-value"><?= $high_open ?></div>
+            <div class="vb-stat-label">Priorité haute à traiter</div>
+        </div>
+    </div>
+    <div class="vb-stat-card vb-card-orange">
         <div class="vb-stat-icon"><span class="dashicons dashicons-bell"></span></div>
         <div class="vb-stat-body">
             <div class="vb-stat-value"><?= $new_c ?></div>
             <div class="vb-stat-label">Jamais contactés</div>
         </div>
     </div>
-    <div class="vb-stat-card vb-card-orange">
-        <div class="vb-stat-icon"><span class="dashicons dashicons-media-spreadsheet"></span></div>
-        <div class="vb-stat-body">
-            <div class="vb-stat-value"><?= number_format($pipeline, 0, ',', ' ') ?> <small>MAD</small></div>
-            <div class="vb-stat-label">Devis en attente de réponse</div>
-        </div>
-    </div>
-    <div class="vb-stat-card vb-card-green">
+    <div class="vb-stat-card vb-card-purple">
         <div class="vb-stat-icon"><span class="dashicons dashicons-yes-alt"></span></div>
         <div class="vb-stat-body">
             <div class="vb-stat-value"><?= $conv_rate ?><small>%</small></div>
-            <div class="vb-stat-label"><?= $won_c ?> gagnés sur <?= $total ?> demandes</div>
-        </div>
-    </div>
-    <div class="vb-stat-card vb-card-purple">
-        <div class="vb-stat-icon"><span class="dashicons dashicons-clock"></span></div>
-        <div class="vb-stat-body">
-            <div class="vb-stat-value">
-                <?= $avg_resp !== null ? ( $avg_resp < 1 ? '<1' : round($avg_resp) ) : '—' ?> <small>h</small>
-            </div>
-            <div class="vb-stat-label">Délai moyen de 1ère réponse</div>
+            <div class="vb-stat-label">Taux de conversion</div>
         </div>
     </div>
 </div>
 
 <!-- Filtres -->
-<div class="vb-filters" style="margin-top:20px">
-    <form method="get" action="" class="vb-filter-form">
+<div class="vb-filters vb-crm-filters" style="margin-top:20px">
+    <form method="get" action="" class="vb-filter-form" style="flex-wrap:wrap;gap:8px">
         <input type="hidden" name="page" value="vendbase-leads">
-        <div class="vb-filter-group">
-            <input type="text" name="s" value="<?= esc_attr($search) ?>" placeholder="Nom, téléphone, email, message..." class="vb-input vb-input-search">
-        </div>
-        <div class="vb-filter-group">
-            <select name="status" class="vb-select">
-                <option value="">Tous les statuts</option>
-                <?php foreach ($statuses as $key => $s): ?>
-                <option value="<?= esc_attr($key) ?>" <?= selected($status, $key, false) ?>><?= esc_html($s['label']) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="vb-filter-group">
-            <select name="type" class="vb-select">
-                <option value="">Tous les types</option>
-                <?php foreach ($type_labels as $key => $label): ?>
-                <option value="<?= esc_attr($key) ?>" <?= selected($type, $key, false) ?>><?= esc_html($label) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="vb-filter-group">
-            <select name="year" class="vb-select">
-                <?php for ($y = date('Y'); $y >= date('Y') - 3; $y--): ?>
-                <option value="<?= $y ?>" <?= selected($year, $y, false) ?>><?= $y ?></option>
-                <?php endfor; ?>
-            </select>
-        </div>
-        <div class="vb-filter-group">
-            <button type="submit" class="vb-btn vb-btn-secondary">Filtrer</button>
-            <a href="<?= admin_url('admin.php?page=vendbase-leads') ?>" class="vb-btn vb-btn-ghost">Reset</a>
-        </div>
+        <?php if ($f['archived']==='1'): ?><input type="hidden" name="archived" value="1"><?php endif; ?>
+
+        <input type="text" name="s" value="<?= esc_attr($f['search']) ?>" placeholder="Nom, téléphone, réf..." class="vb-input vb-input-search">
+
+        <select name="source" class="vb-select">
+            <option value="">Toutes sources</option>
+            <?php foreach ($L_source as $k => $s): ?>
+            <option value="<?= $k ?>" <?= selected($f['source'],$k,false) ?>><?= $s['icon'] ?> <?= esc_html($s['label']) ?></option>
+            <?php endforeach; ?>
+        </select>
+
+        <select name="priority" class="vb-select">
+            <option value="">Toute priorité</option>
+            <?php foreach ($L_prio as $k => $p): ?>
+            <option value="<?= $k ?>" <?= selected($f['priority'],$k,false) ?>><?= esc_html($p['label']) ?></option>
+            <?php endforeach; ?>
+        </select>
+
+        <select name="type" class="vb-select">
+            <option value="">Tout type de site</option>
+            <?php foreach ($L_type as $k => $lbl): ?>
+            <option value="<?= $k ?>" <?= selected($f['website_type'],$k,false) ?>><?= esc_html($lbl) ?></option>
+            <?php endforeach; ?>
+        </select>
+
+        <select name="lang" class="vb-select">
+            <option value="">Toute langue</option>
+            <?php foreach ($L_lang as $k => $lbl): ?>
+            <option value="<?= $k ?>" <?= selected($f['language'],$k,false) ?>><?= esc_html($lbl) ?></option>
+            <?php endforeach; ?>
+        </select>
+
+        <select name="status" class="vb-select">
+            <option value="">Tout statut</option>
+            <?php foreach ($L_status as $k => $s): ?>
+            <option value="<?= $k ?>" <?= selected($f['status'],$k,false) ?>><?= esc_html($s['label']) ?></option>
+            <?php endforeach; ?>
+        </select>
+
+        <select name="contact" class="vb-select">
+            <option value="">Tout contact préféré</option>
+            <?php foreach ($L_contact as $k => $lbl): ?>
+            <option value="<?= $k ?>" <?= selected($f['preferred_contact'],$k,false) ?>><?= esc_html($lbl) ?></option>
+            <?php endforeach; ?>
+        </select>
+
+        <select name="maint" class="vb-select">
+            <option value="">Maintenance ?</option>
+            <option value="1" <?= selected($f['maintenance'],'1',false) ?>>Oui</option>
+            <option value="0" <?= selected($f['maintenance'],'0',false) ?>>Non</option>
+        </select>
+
+        <input type="date" name="from" value="<?= esc_attr($f['date_from']) ?>" class="vb-input" title="Du">
+        <input type="date" name="to"   value="<?= esc_attr($f['date_to']) ?>" class="vb-input" title="Au">
+
+        <button type="submit" class="vb-btn vb-btn-secondary">Filtrer</button>
+        <a href="<?= admin_url('admin.php?page=vendbase-leads') ?>" class="vb-btn vb-btn-ghost">Reset</a>
     </form>
 </div>
 
-<!-- Table des leads -->
+<!-- Inbox -->
 <div class="vb-card" style="margin-top:16px">
-<table class="vb-table vb-table-full">
+<table class="vb-table vb-table-full vb-crm-table">
     <thead>
         <tr>
+            <th>Priorité</th>
             <th>Client</th>
-            <th>Contact</th>
-            <th>Demande</th>
-            <th>Formule</th>
-            <th>Devis (MAD)</th>
+            <th>Source</th>
+            <th>Langue</th>
+            <th>Type de site</th>
+            <th>Projet</th>
+            <th>Maint.</th>
             <th>Statut</th>
             <th>Reçu</th>
             <th>Actions</th>
@@ -148,249 +236,299 @@ function vb_lead_wa_number( $phone ) {
     </thead>
     <tbody>
     <?php if ($leads): ?>
-    <?php foreach ($leads as $l): ?>
-        <?php
-            $wa      = vb_lead_wa_number($l->phone);
-            $age_h   = ( current_time('timestamp') - strtotime($l->created_at) ) / 3600;
-            $is_cold = ( $l->status === 'new' && $age_h > 24 );
-        ?>
-        <tr class="vb-lead-row" data-id="<?= $l->id ?>">
+    <?php foreach ($leads as $l):
+        $src   = vb_normalize_lead_source($l->source);
+        $prio  = $l->priority ?: 'medium';
+        $wa    = vb_lead_wa_number($l->phone);
+        $age_h = ( current_time('timestamp') - strtotime($l->created_at) ) / 3600;
+        $cold  = ( $l->status === 'new' && $age_h > 24 );
+    ?>
+        <tr class="vb-lead-row vb-prio-<?= esc_attr($prio) ?>" data-id="<?= $l->id ?>">
             <td>
-                <strong><?= esc_html($l->full_name) ?></strong>
-                <?php if ($is_cold): ?>
-                    <span class="vb-badge vb-badge-red" title="Reçu il y a plus de 24h et jamais contacté">⏰ en retard</span>
-                <?php endif; ?>
-                <?php if ($l->locale): ?><div class="vb-sub">Langue : <?= esc_html(strtoupper($l->locale)) ?></div><?php endif; ?>
-                <?php if ($l->utm_source): ?><div class="vb-sub">via <?= esc_html($l->utm_source) ?><?= $l->utm_campaign ? ' / ' . esc_html($l->utm_campaign) : '' ?></div><?php endif; ?>
+                <span class="vb-prio-dot vb-prio-<?= esc_attr($prio) ?>" title="Priorité <?= esc_attr($L_prio[$prio]['label'] ?? $prio) ?>"></span>
+                <span class="vb-sub"><?= esc_html($L_prio[$prio]['label'] ?? $prio) ?></span>
             </td>
-            <td class="vb-wa-cell">
-                <?php if ($wa): ?>
-                <a href="https://wa.me/<?= esc_attr($wa) ?>" target="_blank" class="vb-wa-btn" title="WhatsApp : <?= esc_attr($l->phone) ?>">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                </a>
-                <?php endif; ?>
+            <td>
+                <strong class="vb-lead-open" data-id="<?= $l->id ?>" style="cursor:pointer"><?= esc_html($l->full_name) ?></strong>
+                <?php if ($cold): ?><span class="vb-badge vb-badge-red">⏰</span><?php endif; ?>
                 <div class="vb-sub"><?= esc_html($l->phone) ?></div>
-                <?php if ($l->email): ?>
-                <div class="vb-sub"><a href="mailto:<?= esc_attr($l->email) ?>" class="vb-link"><?= esc_html($l->email) ?></a></div>
-                <?php endif; ?>
+                <div class="vb-sub" style="opacity:.6"><?= esc_html($l->reference) ?></div>
             </td>
             <td>
-                <span class="vb-type-badge"><?= esc_html($type_labels[$l->website_type] ?? $l->website_type ?: '—') ?></span>
-                <?php if ($l->domain_status): ?>
-                <div class="vb-sub"><?= esc_html($domain_labels[$l->domain_status] ?? $l->domain_status) ?></div>
-                <?php endif; ?>
-                <?php if ($l->message): ?>
-                <div class="vb-sub vb-lead-msg" title="<?= esc_attr($l->message) ?>">
-                    « <?= esc_html( mb_strimwidth($l->message, 0, 70, '…') ) ?> »
-                </div>
-                <?php endif; ?>
-            </td>
-            <td>
-                <?php if ($l->package_interest): ?>
-                <span class="vb-badge vb-badge-<?= $l->package_interest === 'premium' ? 'purple' : ($l->package_interest === 'essentiel' ? 'blue' : 'orange') ?>">
-                    <?= esc_html($package_labels[$l->package_interest] ?? $l->package_interest) ?>
+                <span class="vb-src-badge vb-src-<?= esc_attr($src) ?>">
+                    <?= $L_source[$src]['icon'] ?? '' ?> <?= esc_html($L_source[$src]['label'] ?? $src) ?>
                 </span>
-                <?php else: ?><span class="vb-muted">—</span><?php endif; ?>
             </td>
-            <td>
-                <input type="number" class="vb-input vb-lead-quote" data-id="<?= $l->id ?>"
-                       value="<?= $l->quoted_price > 0 ? esc_attr(round($l->quoted_price)) : '' ?>"
-                       placeholder="—" min="0" step="100" style="width:100px">
-            </td>
+            <td><span class="vb-lang-badge"><?= esc_html($l->locale ? strtoupper($l->locale) : '—') ?></span></td>
+            <td><span class="vb-type-badge"><?= esc_html($L_type[$l->website_type] ?? ($l->website_type ?: '—')) ?></span></td>
+            <td><?= $l->project_type ? esc_html($L_ptype[$l->project_type] ?? $l->project_type) : '<span class="vb-muted">—</span>' ?></td>
+            <td style="text-align:center"><?= intval($l->maintenance) ? '✅' : '<span class="vb-muted">—</span>' ?></td>
             <td>
                 <select class="vb-select vb-status-select vb-lead-status" data-id="<?= $l->id ?>">
-                    <?php foreach ($statuses as $key => $s): ?>
-                    <option value="<?= esc_attr($key) ?>" <?= selected($l->status, $key, false) ?>><?= esc_html($s['label']) ?></option>
+                    <?php foreach ($L_status as $k => $s): ?>
+                    <option value="<?= $k ?>" <?= selected($l->status,$k,false) ?>><?= esc_html($s['label']) ?></option>
                     <?php endforeach; ?>
                 </select>
                 <?php if ($l->project_id): ?>
-                <div class="vb-sub">
-                    <a href="<?= admin_url('admin.php?page=vendbase-edit&id=' . intval($l->project_id)) ?>" class="vb-link">→ Projet #<?= intval($l->project_id) ?></a>
-                </div>
+                <div class="vb-sub"><a href="<?= admin_url('admin.php?page=vendbase-edit&id='.intval($l->project_id)) ?>" class="vb-link">→ Projet #<?= intval($l->project_id) ?></a></div>
                 <?php endif; ?>
             </td>
-            <td>
-                <?= date('d/m/Y', strtotime($l->created_at)) ?>
-                <div class="vb-sub"><?= date('H:i', strtotime($l->created_at)) ?></div>
-            </td>
-            <td class="vb-actions-cell">
-                <?php if (!$l->project_id): ?>
-                <button class="vb-action-btn vb-lead-convert" data-id="<?= $l->id ?>" title="Convertir en projet">
-                    <span class="dashicons dashicons-migrate"></span>
-                </button>
-                <?php endif; ?>
-                <button class="vb-action-btn vb-lead-note" data-id="<?= $l->id ?>"
-                        data-note="<?= esc_attr($l->internal_note) ?>" title="Note interne">
-                    <span class="dashicons dashicons-edit-page"></span>
-                </button>
-                <button class="vb-action-btn vb-btn-delete vb-lead-delete" data-id="<?= $l->id ?>" title="Supprimer">
-                    <span class="dashicons dashicons-trash"></span>
-                </button>
+            <td><?= date('d/m/Y', strtotime($l->created_at)) ?><div class="vb-sub"><?= date('H:i', strtotime($l->created_at)) ?></div></td>
+            <td class="vb-actions-cell vb-crm-actions">
+                <button class="vb-action-btn vb-lead-open" data-id="<?= $l->id ?>" title="Ouvrir"><span class="dashicons dashicons-visibility"></span></button>
+                <?php if ($l->phone): ?><a class="vb-action-btn" href="tel:<?= esc_attr(preg_replace('/[^0-9+]/','',$l->phone)) ?>" title="Appeler"><span class="dashicons dashicons-phone"></span></a><?php endif; ?>
+                <?php if ($wa): ?><a class="vb-action-btn" href="https://wa.me/<?= esc_attr($wa) ?>" target="_blank" title="WhatsApp"><span class="dashicons dashicons-whatsapp"></span></a><?php endif; ?>
+                <?php if ($l->email): ?><a class="vb-action-btn" href="mailto:<?= esc_attr($l->email) ?>" title="Email"><span class="dashicons dashicons-email"></span></a><?php endif; ?>
+                <?php if (!$l->project_id): ?><button class="vb-action-btn vb-lead-convert" data-id="<?= $l->id ?>" title="Convertir en projet"><span class="dashicons dashicons-migrate"></span></button><?php endif; ?>
+                <button class="vb-action-btn vb-lead-archive" data-id="<?= $l->id ?>" data-archived="<?= $f['archived']==='1' ? '1' : '0' ?>" title="<?= $f['archived']==='1' ? 'Désarchiver' : 'Archiver' ?>"><span class="dashicons dashicons-archive"></span></button>
+                <button class="vb-action-btn vb-btn-delete vb-lead-delete" data-id="<?= $l->id ?>" title="Supprimer"><span class="dashicons dashicons-trash"></span></button>
             </td>
         </tr>
     <?php endforeach; ?>
     <?php else: ?>
-        <tr><td colspan="8" class="vb-empty">
-            Aucune demande pour le moment.<br>
-            <span class="vb-sub">Vérifie que le site younessweb.com est bien connecté (bouton « Connexion au site » en haut).</span>
+        <tr><td colspan="10" class="vb-empty">
+            Aucun lead ne correspond<?= $f['archived']==='1' ? ' (archives)' : '' ?>.<br>
+            <span class="vb-sub">Les demandes du site et de l'agent WhatsApp apparaîtront ici automatiquement.</span>
         </td></tr>
     <?php endif; ?>
     </tbody>
 </table>
 </div>
 
-<!-- Modal : configuration de la connexion au site Next.js -->
+</div><!-- .vb-wrap -->
+
+<!-- ======================= PANNEAU DÉTAIL LEAD ======================= -->
+<div class="vb-modal" id="vb-lead-panel" style="display:none">
+    <div class="vb-modal-backdrop"></div>
+    <div class="vb-modal-box vb-crm-panel">
+        <div class="vb-modal-header">
+            <h2 id="vb-p-name">—</h2>
+            <span id="vb-p-ref" class="vb-sub"></span>
+            <button class="vb-modal-close" type="button">&times;</button>
+        </div>
+        <div class="vb-modal-body">
+            <div class="vb-crm-grid">
+
+                <!-- Gauche : client + timeline -->
+                <div class="vb-crm-col">
+                    <div class="vb-section-label">Client</div>
+                    <div class="vb-crm-field"><span>Téléphone</span><strong id="vb-p-phone">—</strong></div>
+                    <div class="vb-crm-field"><span>Email</span><strong id="vb-p-email">—</strong></div>
+                    <div class="vb-crm-field"><span>Langue</span><strong id="vb-p-lang">—</strong></div>
+                    <div class="vb-crm-field"><span>Source</span><strong id="vb-p-source">—</strong></div>
+                    <div class="vb-crm-field"><span>Contact préféré</span><strong id="vb-p-contact">—</strong></div>
+
+                    <div class="vb-crm-actions-row" id="vb-p-quickactions"></div>
+
+                    <div class="vb-section-label" style="margin-top:16px">Timeline</div>
+                    <div class="vb-crm-field"><span>Reçu le</span><strong id="vb-p-created">—</strong></div>
+                    <div class="vb-crm-field"><span>1er contact</span><strong id="vb-p-contacted">—</strong></div>
+                    <div class="vb-crm-field"><span>Statut</span><strong id="vb-p-status">—</strong></div>
+
+                    <?php if (!empty($leads_js)): ?>
+                    <div class="vb-section-label" style="margin-top:16px">Message initial</div>
+                    <div id="vb-p-message" class="vb-sub" style="white-space:pre-wrap">—</div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Droite : qualification + notes -->
+                <div class="vb-crm-col">
+                    <div class="vb-section-label">Qualification</div>
+                    <div class="vb-crm-field"><span>Type de site</span><strong id="vb-p-type">—</strong></div>
+                    <div class="vb-crm-field"><span>Type de projet</span><strong id="vb-p-ptype">—</strong></div>
+                    <div class="vb-crm-field"><span>Produits / services</span><strong id="vb-p-products">—</strong></div>
+                    <div class="vb-crm-field"><span>Domaine &amp; hébergement</span><strong id="vb-p-domain">—</strong></div>
+                    <div class="vb-crm-field"><span>Contenu prêt</span><strong id="vb-p-content">—</strong></div>
+                    <div class="vb-crm-field"><span>Maintenance</span><strong id="vb-p-maint">—</strong></div>
+                    <div class="vb-crm-field"><span>Formule</span><strong id="vb-p-pkg">—</strong></div>
+
+                    <div class="vb-crm-field">
+                        <span>Priorité</span>
+                        <select id="vb-p-priority" class="vb-select">
+                            <?php foreach ($L_prio as $k => $p): ?>
+                            <option value="<?= $k ?>"><?= esc_html($p['label']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="vb-crm-field">
+                        <span>Devis (MAD)</span>
+                        <input type="number" id="vb-p-quote" class="vb-input" min="0" step="100" style="width:120px">
+                    </div>
+
+                    <div class="vb-section-label" style="margin-top:12px">Note interne</div>
+                    <textarea id="vb-p-note" class="vb-textarea" rows="4" placeholder="Budget évoqué, deadline, objections..."></textarea>
+                    <button class="vb-btn vb-btn-secondary vb-btn-sm" id="vb-p-note-save" style="margin-top:8px">Enregistrer la note</button>
+                </div>
+            </div>
+        </div>
+        <div class="vb-modal-footer">
+            <button class="vb-btn vb-btn-ghost vb-modal-close-btn">Fermer</button>
+            <button class="vb-btn vb-btn-primary" id="vb-p-convert">Convertir en projet</button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================= MODAL CONNEXIONS API ======================= -->
 <div class="vb-modal" id="vb-api-modal" style="display:none">
     <div class="vb-modal-backdrop"></div>
     <div class="vb-modal-box vb-modal-md">
         <div class="vb-modal-header">
-            <h2>Connexion du site younessweb.com</h2>
+            <h2>Connexions API</h2>
             <button class="vb-modal-close" type="button">&times;</button>
         </div>
         <div class="vb-modal-body">
-            <p class="vb-sub">
-                Le site Next.js envoie chaque demande du formulaire à ce plugin.
-                Ajoute ces deux variables d'environnement dans le projet Next.js
-                (fichier <code>.env.local</code> en local, et dans Vercel en production) :
-            </p>
-
+            <div class="vb-section-label">🌐 Site web (formulaire de contact)</div>
             <div class="vb-form-group">
-                <label class="vb-label">WP_LEADS_ENDPOINT</label>
-                <input type="text" class="vb-input" readonly onclick="this.select()"
-                       value="<?= esc_url( rest_url('vendbase/v1/leads') ) ?>">
+                <label class="vb-label">Endpoint</label>
+                <input type="text" class="vb-input" readonly onclick="this.select()" value="<?= esc_url(rest_url('vendbase/v1/leads')) ?>">
             </div>
-
             <div class="vb-form-group">
                 <label class="vb-label">WP_LEADS_SECRET</label>
-                <div class="vb-pass-wrap">
-                    <input type="text" class="vb-input" id="vb-api-secret" readonly onclick="this.select()"
-                           value="<?= esc_attr( vb_get_lead_api_secret() ) ?>">
-                </div>
-                <p class="vb-sub">Clé privée : ne la publie jamais dans le code du site (uniquement en variable d'environnement).</p>
+                <input type="text" class="vb-input" readonly onclick="this.select()" value="<?= esc_attr(vb_get_lead_api_secret()) ?>">
             </div>
 
+            <div class="vb-section-label" style="margin-top:16px">💬 Agent WhatsApp IA (Cloudflare Worker)</div>
+            <div class="vb-form-group">
+                <label class="vb-label">Endpoint</label>
+                <input type="text" class="vb-input" readonly onclick="this.select()" value="<?= esc_url(rest_url('younessweb/v1/whatsapp-lead')) ?>">
+            </div>
+            <div class="vb-form-group">
+                <label class="vb-label">X-API-Key</label>
+                <input type="text" class="vb-input" id="vb-wa-secret" readonly onclick="this.select()" value="<?= esc_attr(vb_get_whatsapp_api_secret()) ?>">
+            </div>
             <div class="vb-notice vb-notice-box">
-                <strong>Test rapide</strong> — colle ceci dans un terminal pour simuler une demande :
-                <pre style="white-space:pre-wrap;font-size:11px;margin-top:8px">curl -X POST "<?= esc_url( rest_url('vendbase/v1/leads') ) ?>" \
+                <strong>Test</strong> — simule une qualification WhatsApp :
+                <pre style="white-space:pre-wrap;font-size:11px;margin-top:8px">curl -X POST "<?= esc_url(rest_url('younessweb/v1/whatsapp-lead')) ?>" \
   -H "Content-Type: application/json" \
-  -H "X-VB-Secret: <?= esc_html( vb_get_lead_api_secret() ) ?>" \
-  -d '{"fullName":"Test Client","phone":"0600000000","websiteType":"ecommerce","packageInterest":"premium"}'</pre>
+  -H "X-API-Key: <?= esc_html(vb_get_whatsapp_api_secret()) ?>" \
+  -d '{"source":"whatsapp","reference":"LEAD-00123","priority":"high","language":"ar","website_type":"ecommerce","project_type":"new","products_count":"1-10","has_domain":true,"content_ready":"partial","maintenance":true,"preferred_contact":"whatsapp","customer_name":"Ahmed","phone":"+2126xxxxxxxx"}'</pre>
             </div>
         </div>
         <div class="vb-modal-footer">
-            <button class="vb-btn vb-btn-ghost" id="vb-regen-secret">Régénérer la clé</button>
+            <button class="vb-btn vb-btn-ghost" id="vb-regen-wa">Régénérer la clé WhatsApp</button>
             <button class="vb-btn vb-btn-primary vb-modal-close-btn">Fermer</button>
         </div>
     </div>
 </div>
 
-<!-- Modal : note interne -->
-<div class="vb-modal" id="vb-note-modal" style="display:none">
-    <div class="vb-modal-backdrop"></div>
-    <div class="vb-modal-box">
-        <div class="vb-modal-header">
-            <h2>Note interne</h2>
-            <button class="vb-modal-close" type="button">&times;</button>
-        </div>
-        <div class="vb-modal-body">
-            <textarea class="vb-textarea" id="vb-note-text" rows="6"
-                      placeholder="Budget évoqué, deadline, ce qu'il veut exactement, objections..."></textarea>
-        </div>
-        <div class="vb-modal-footer">
-            <button class="vb-btn vb-btn-ghost vb-modal-close-btn">Annuler</button>
-            <button class="vb-btn vb-btn-primary" id="vb-note-save">Enregistrer</button>
-        </div>
-    </div>
-</div>
-
-</div><!-- .vb-wrap -->
-
 <script>
 (function($){
-    var toast = function(msg, ok){
-        var t = $('<div class="vb-toast ' + (ok === false ? 'vb-toast-error' : 'vb-toast-success') + '">' + msg + '</div>');
-        $('body').append(t);
-        setTimeout(function(){ t.fadeOut(300, function(){ t.remove(); }); }, 2200);
-    };
+    var LEADS = <?= wp_json_encode($leads_js) ?>;
+    var current = null;
 
-    /* ── Statut ── */
+    function toast(msg, ok){
+        var t = $('<div class="vb-toast '+(ok===false?'vb-toast-error':'vb-toast-success')+'">'+msg+'</div>');
+        $('body').append(t); setTimeout(function(){ t.fadeOut(300,function(){t.remove();}); }, 2200);
+    }
+
+    // ----- Ouvrir le panneau détail -----
+    function openLead(id){
+        var d = LEADS[id]; if (!d) return; current = id;
+        $('#vb-p-name').text(d.name);
+        $('#vb-p-ref').text(d.reference);
+        $('#vb-p-phone').text(d.phone || '—');
+        $('#vb-p-email').text(d.email || '—');
+        $('#vb-p-lang').text(d.lang_lbl);
+        $('#vb-p-source').text((d.source_ico||'')+' '+d.source_lbl);
+        $('#vb-p-contact').text(d.contact_lbl);
+        $('#vb-p-created').text(d.created);
+        $('#vb-p-contacted').text(d.contacted || '—');
+        $('#vb-p-status').text(d.status_lbl);
+        $('#vb-p-message').text(d.message || '—');
+        $('#vb-p-type').text(d.type_lbl);
+        $('#vb-p-ptype').text(d.ptype_lbl);
+        $('#vb-p-products').text(d.products);
+        $('#vb-p-domain').text(d.domain_lbl);
+        $('#vb-p-content').text(d.content_lbl);
+        $('#vb-p-maint').text(d.maint ? '✅ Oui' : '— Non');
+        $('#vb-p-pkg').text(d.pkg_lbl || '—');
+        $('#vb-p-priority').val(d.priority);
+        $('#vb-p-quote').val(d.quoted > 0 ? Math.round(d.quoted) : '');
+        $('#vb-p-note').val(d.note || '');
+
+        var qa = [];
+        if (d.phone) qa.push('<a class="vb-btn vb-btn-sm vb-btn-ghost" href="tel:'+d.phone.replace(/[^0-9+]/g,'')+'"><span class="dashicons dashicons-phone"></span> Appeler</a>');
+        if (d.wa)    qa.push('<a class="vb-btn vb-btn-sm vb-btn-ghost" target="_blank" href="https://wa.me/'+d.wa+'"><span class="dashicons dashicons-whatsapp"></span> WhatsApp</a>');
+        if (d.email) qa.push('<a class="vb-btn vb-btn-sm vb-btn-ghost" href="mailto:'+d.email+'"><span class="dashicons dashicons-email"></span> Email</a>');
+        $('#vb-p-quickactions').html(qa.join(' '));
+
+        $('#vb-p-convert').toggle(!d.project_id).text(d.project_id ? 'Déjà converti' : 'Convertir en projet');
+        $('#vb-lead-panel').show();
+    }
+
+    $(document).on('click', '.vb-lead-open', function(){ openLead($(this).data('id')); });
+
+    // ----- Priorité (dans le panneau) -----
+    $('#vb-p-priority').on('change', function(){
+        var pr = $(this).val();
+        $.post(VB.ajax, {action:'vb_update_lead_priority', nonce:VB.nonce, id:current, priority:pr}, function(r){
+            if (r.success){ if(LEADS[current]) LEADS[current].priority = pr;
+                var $dot = $('.vb-lead-row[data-id="'+current+'"] .vb-prio-dot');
+                $dot.attr('class','vb-prio-dot vb-prio-'+pr);
+                toast('Priorité mise à jour'); }
+            else toast('Erreur', false);
+        });
+    });
+
+    // ----- Devis -----
+    $('#vb-p-quote').on('change', function(){
+        var v = $(this).val();
+        $.post(VB.ajax, {action:'vb_update_lead_quote', nonce:VB.nonce, id:current, quoted_price:v}, function(r){
+            r.success ? toast('Devis enregistré') : toast('Erreur', false);
+        });
+    });
+
+    // ----- Note -----
+    $('#vb-p-note-save').on('click', function(){
+        var v = $('#vb-p-note').val();
+        $.post(VB.ajax, {action:'vb_update_lead_note', nonce:VB.nonce, id:current, internal_note:v}, function(r){
+            if (r.success){ if(LEADS[current]) LEADS[current].note = v; toast('Note enregistrée'); }
+            else toast('Erreur', false);
+        });
+    });
+
+    // ----- Statut (ligne) -----
     $('.vb-lead-status').on('change', function(){
-        var id = $(this).data('id'), status = $(this).val(), $sel = $(this);
-        var payload = { action:'vb_update_lead_status', nonce:VB.nonce, id:id, status:status };
+        var id=$(this).data('id'), st=$(this).val(), p={action:'vb_update_lead_status',nonce:VB.nonce,id:id,status:st};
+        if (st==='lost'){ var r=prompt('Raison de la perte ? (prix, délai, concurrent, pas de réponse...)'); if(r===null){location.reload();return;} p.lost_reason=r; }
+        $.post(VB.ajax, p, function(res){ res.success ? toast('Statut mis à jour') : toast(res.data||'Erreur', false); });
+    });
 
-        if (status === 'lost') {
-            var reason = prompt('Pourquoi ce client est perdu ? (prix, délai, concurrent, pas de réponse...)');
-            if (reason === null) { location.reload(); return; }
-            payload.lost_reason = reason;
-        }
-        $.post(VB.ajax, payload, function(r){
-            r.success ? toast('Statut mis à jour') : toast(r.data || 'Erreur', false);
+    // ----- Convertir -----
+    function convert(id){
+        if (!confirm('Créer un projet à partir de ce lead ?\n\nLe client, le contact, le prix du devis et la qualification seront copiés dans Projets, et le lead passera en « Gagné ».')) return;
+        $.post(VB.ajax, {action:'vb_convert_lead', nonce:VB.nonce, id:id}, function(r){
+            if (r.success){ toast('Projet créé — ouverture...'); setTimeout(function(){ window.location=r.data.edit_url; }, 700); }
+            else toast(r.data||'Conversion impossible', false);
+        });
+    }
+    $(document).on('click', '.vb-lead-convert', function(){ convert($(this).data('id')); });
+    $('#vb-p-convert').on('click', function(){ if(current) convert(current); });
+
+    // ----- Archiver -----
+    $('.vb-lead-archive').on('click', function(){
+        var id=$(this).data('id'), isArch=$(this).data('archived')==1;
+        $.post(VB.ajax, {action:'vb_archive_lead', nonce:VB.nonce, id:id, archived:isArch?0:1}, function(r){
+            if (r.success){ $('.vb-lead-row[data-id="'+id+'"]').fadeOut(200,function(){$(this).remove();}); toast(isArch?'Désarchivé':'Archivé'); }
         });
     });
 
-    /* ── Prix du devis ── */
-    $('.vb-lead-quote').on('change', function(){
-        var id = $(this).data('id'), price = $(this).val();
-        $.post(VB.ajax, { action:'vb_update_lead_quote', nonce:VB.nonce, id:id, quoted_price:price }, function(r){
-            if (!r.success) { toast(r.data || 'Erreur', false); return; }
-            if (r.data && r.data.status) {
-                $('.vb-lead-status[data-id="' + id + '"]').val(r.data.status);
-                toast('Devis enregistré — statut passé à « Devis »');
-            } else {
-                toast('Devis enregistré');
-            }
-        });
-    });
-
-    /* ── Convertir en projet ── */
-    $('.vb-lead-convert').on('click', function(){
-        var id = $(this).data('id');
-        if (!confirm('Créer un projet à partir de cette demande ?\n\nLe client, son contact et le prix du devis seront copiés dans Projets, et la demande passera en « Gagné ».')) return;
-        $.post(VB.ajax, { action:'vb_convert_lead', nonce:VB.nonce, id:id }, function(r){
-            if (r.success) {
-                toast('Projet créé — ouverture de la fiche...');
-                setTimeout(function(){ window.location = r.data.edit_url; }, 700);
-            } else {
-                toast(r.data || 'Conversion impossible', false);
-            }
-        });
-    });
-
-    /* ── Note interne ── */
-    var noteId = null;
-    $('.vb-lead-note').on('click', function(){
-        noteId = $(this).data('id');
-        $('#vb-note-text').val($(this).data('note') || '');
-        $('#vb-note-modal').show();
-    });
-    $('#vb-note-save').on('click', function(){
-        var text = $('#vb-note-text').val();
-        $.post(VB.ajax, { action:'vb_update_lead_note', nonce:VB.nonce, id:noteId, internal_note:text }, function(r){
-            if (r.success) {
-                $('.vb-lead-note[data-id="' + noteId + '"]').data('note', text);
-                $('#vb-note-modal').hide();
-                toast('Note enregistrée');
-            } else { toast('Erreur', false); }
-        });
-    });
-
-    /* ── Suppression ── */
+    // ----- Supprimer -----
     $('.vb-lead-delete').on('click', function(){
-        var id = $(this).data('id');
-        if (!confirm('Supprimer définitivement cette demande ?')) return;
-        $.post(VB.ajax, { action:'vb_delete_lead', nonce:VB.nonce, id:id }, function(r){
-            if (r.success) { $('.vb-lead-row[data-id="' + id + '"]').fadeOut(200, function(){ $(this).remove(); }); }
+        var id=$(this).data('id');
+        if (!confirm('Supprimer définitivement ce lead ?')) return;
+        $.post(VB.ajax, {action:'vb_delete_lead', nonce:VB.nonce, id:id}, function(r){
+            if (r.success) $('.vb-lead-row[data-id="'+id+'"]').fadeOut(200,function(){$(this).remove();});
         });
     });
 
-    /* ── Modal API ── */
+    // ----- Modales -----
     $('#vb-show-api-config').on('click', function(){ $('#vb-api-modal').show(); });
     $('.vb-modal-close, .vb-modal-close-btn, .vb-modal-backdrop').on('click', function(){ $('.vb-modal').hide(); });
-
-    $('#vb-regen-secret').on('click', function(){
-        if (!confirm('Régénérer la clé ?\n\nLe site younessweb.com ne pourra plus envoyer de demandes tant que tu n\'auras pas mis à jour WP_LEADS_SECRET dans Vercel.')) return;
-        $.post(VB.ajax, { action:'vb_regenerate_lead_secret', nonce:VB.nonce }, function(r){
-            if (r.success) { $('#vb-api-secret').val(r.data.secret); toast('Nouvelle clé générée — mets-la à jour dans Vercel'); }
+    $('#vb-regen-wa').on('click', function(){
+        if (!confirm('Régénérer la clé WhatsApp ?\n\nLe Cloudflare Worker ne pourra plus envoyer de leads tant que tu n\'auras pas mis à jour la clé de ton côté.')) return;
+        $.post(VB.ajax, {action:'vb_regenerate_whatsapp_secret', nonce:VB.nonce}, function(r){
+            if (r.success){ $('#vb-wa-secret').val(r.data.secret); toast('Nouvelle clé générée'); }
         });
     });
 })(jQuery);

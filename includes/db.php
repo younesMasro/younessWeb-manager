@@ -354,37 +354,119 @@ function vb_create_leads_table() {
     $table   = $wpdb->prefix . 'vb_leads';
 
     $sql = "CREATE TABLE IF NOT EXISTS $table (
-        id               BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        full_name        VARCHAR(200) NOT NULL,
-        phone            VARCHAR(50)  DEFAULT '',
-        email            VARCHAR(200) DEFAULT '',
-        website_type     VARCHAR(50)  DEFAULT '',
-        package_interest VARCHAR(50)  DEFAULT '',
-        domain_status    VARCHAR(50)  DEFAULT '',
-        message          TEXT         DEFAULT NULL,
-        locale           VARCHAR(5)   DEFAULT '',
-        status           VARCHAR(20)  DEFAULT 'new',
-        quoted_price     DECIMAL(10,2) DEFAULT 0,
-        lost_reason      VARCHAR(255) DEFAULT '',
-        internal_note    TEXT         DEFAULT NULL,
-        project_id       BIGINT(20) UNSIGNED DEFAULT NULL,
-        source           VARCHAR(50)  DEFAULT 'website_form',
-        utm_source       VARCHAR(100) DEFAULT '',
-        utm_medium       VARCHAR(100) DEFAULT '',
-        utm_campaign     VARCHAR(100) DEFAULT '',
-        referer          VARCHAR(500) DEFAULT '',
-        ip               VARCHAR(45)  DEFAULT '',
-        first_contact_at DATETIME     DEFAULT NULL,
-        created_at       DATETIME     DEFAULT CURRENT_TIMESTAMP,
-        updated_at       DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        id                BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        reference         VARCHAR(50)  DEFAULT '',
+        full_name         VARCHAR(200) NOT NULL,
+        phone             VARCHAR(50)  DEFAULT '',
+        email             VARCHAR(200) DEFAULT '',
+        website_type      VARCHAR(50)  DEFAULT '',
+        project_type      VARCHAR(20)  DEFAULT '',
+        products_count    VARCHAR(20)  DEFAULT '',
+        package_interest  VARCHAR(50)  DEFAULT '',
+        domain_status     VARCHAR(50)  DEFAULT '',
+        content_ready     VARCHAR(20)  DEFAULT '',
+        maintenance       TINYINT(1)   DEFAULT 0,
+        preferred_contact VARCHAR(20)  DEFAULT '',
+        priority          VARCHAR(10)  DEFAULT 'medium',
+        message           TEXT         DEFAULT NULL,
+        locale            VARCHAR(5)   DEFAULT '',
+        status            VARCHAR(20)  DEFAULT 'new',
+        quoted_price      DECIMAL(10,2) DEFAULT 0,
+        lost_reason       VARCHAR(255) DEFAULT '',
+        internal_note     TEXT         DEFAULT NULL,
+        assigned_to       VARCHAR(100) DEFAULT '',
+        archived          TINYINT(1)   DEFAULT 0,
+        project_id        BIGINT(20) UNSIGNED DEFAULT NULL,
+        source            VARCHAR(50)  DEFAULT 'website_form',
+        utm_source        VARCHAR(100) DEFAULT '',
+        utm_medium        VARCHAR(100) DEFAULT '',
+        utm_campaign      VARCHAR(100) DEFAULT '',
+        referer           VARCHAR(500) DEFAULT '',
+        ip                VARCHAR(45)  DEFAULT '',
+        first_contact_at  DATETIME     DEFAULT NULL,
+        created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        updated_at        DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY idx_status (status),
         KEY idx_created (created_at),
-        KEY idx_project (project_id)
+        KEY idx_project (project_id),
+        KEY idx_source (source),
+        KEY idx_archived (archived)
     ) $charset;";
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta( $sql );
+
+    // Filet de sécurité : ajoute les colonnes du CRM (v2.5) sur les installs
+    // existantes où la table date d'une version antérieure. N'altère rien d'autre.
+    $existing = $wpdb->get_col( "DESC $table", 0 );
+    $new_cols = [
+        'reference'         => "ALTER TABLE $table ADD COLUMN reference VARCHAR(50) DEFAULT '' AFTER id",
+        'project_type'      => "ALTER TABLE $table ADD COLUMN project_type VARCHAR(20) DEFAULT '' AFTER website_type",
+        'products_count'    => "ALTER TABLE $table ADD COLUMN products_count VARCHAR(20) DEFAULT '' AFTER project_type",
+        'content_ready'     => "ALTER TABLE $table ADD COLUMN content_ready VARCHAR(20) DEFAULT '' AFTER domain_status",
+        'maintenance'       => "ALTER TABLE $table ADD COLUMN maintenance TINYINT(1) DEFAULT 0 AFTER content_ready",
+        'preferred_contact' => "ALTER TABLE $table ADD COLUMN preferred_contact VARCHAR(20) DEFAULT '' AFTER maintenance",
+        'priority'          => "ALTER TABLE $table ADD COLUMN priority VARCHAR(10) DEFAULT 'medium' AFTER preferred_contact",
+        'assigned_to'       => "ALTER TABLE $table ADD COLUMN assigned_to VARCHAR(100) DEFAULT '' AFTER internal_note",
+        'archived'          => "ALTER TABLE $table ADD COLUMN archived TINYINT(1) DEFAULT 0 AFTER assigned_to",
+    ];
+    foreach ( $new_cols as $col => $alter ) {
+        if ( ! in_array( $col, $existing, true ) ) $wpdb->query( $alter );
+    }
+}
+
+/** Source d'un lead : normalisée en 'website' ou 'whatsapp'. */
+function vb_lead_sources() {
+    return [
+        'website'  => [ 'label' => 'Site web',  'icon' => '🌐', 'color' => 'blue' ],
+        'whatsapp' => [ 'label' => 'WhatsApp',  'icon' => '💬', 'color' => 'green' ],
+    ];
+}
+
+function vb_lead_priorities() {
+    return [
+        'high'   => [ 'label' => 'Haute',   'color' => 'red' ],
+        'medium' => [ 'label' => 'Moyenne', 'color' => 'orange' ],
+        'low'    => [ 'label' => 'Basse',   'color' => 'blue' ],
+    ];
+}
+
+function vb_lead_languages() {
+    return [
+        'ar' => 'العربية',
+        'fr' => 'Français',
+        'en' => 'English',
+    ];
+}
+
+function vb_lead_project_types() {
+    return [
+        'new'      => 'Nouveau site',
+        'redesign' => 'Refonte',
+    ];
+}
+
+function vb_lead_content_readiness() {
+    return [
+        'yes'     => 'Prêt',
+        'partial' => 'Partiel',
+        'no'      => 'Pas prêt',
+    ];
+}
+
+function vb_lead_contact_prefs() {
+    return [
+        'whatsapp' => 'WhatsApp',
+        'phone'    => 'Téléphone',
+        'meeting'  => 'Rendez-vous',
+    ];
+}
+
+/** Normalise une source brute (website_form, whatsapp…) vers 'website'|'whatsapp'. */
+function vb_normalize_lead_source( $raw ) {
+    return ( stripos( (string) $raw, 'whatsapp' ) !== false || stripos( (string) $raw, 'wa' ) === 0 )
+        ? 'whatsapp' : 'website';
 }
 
 /** Statuts du pipeline commercial, dans l'ordre. */
@@ -431,16 +513,24 @@ function vb_get_leads( $args = [] ) {
     $table = $wpdb->prefix . 'vb_leads';
 
     $defaults = [
-        'status'       => '',
-        'website_type' => '',
-        'package'      => '',
-        'search'       => '',
-        'month'        => '',
-        'year'         => '',
-        'orderby'      => 'created_at',
-        'order'        => 'DESC',
-        'limit'        => 100,
-        'offset'       => 0,
+        'status'            => '',
+        'website_type'      => '',
+        'package'           => '',
+        'source'            => '',   // 'website' | 'whatsapp'
+        'priority'          => '',   // 'high' | 'medium' | 'low'
+        'language'          => '',   // locale : ar | fr | en
+        'maintenance'       => '',   // '0' | '1'
+        'preferred_contact' => '',   // whatsapp | phone | meeting
+        'archived'          => '0',  // '0' masque les archivés, '1' ne montre qu'eux, 'all' tout
+        'date_from'         => '',
+        'date_to'           => '',
+        'search'            => '',
+        'month'             => '',
+        'year'              => '',
+        'orderby'           => 'created_at',
+        'order'             => 'DESC',
+        'limit'             => 200,
+        'offset'            => 0,
     ];
     $args = wp_parse_args( $args, $defaults );
 
@@ -449,16 +539,42 @@ function vb_get_leads( $args = [] ) {
     if ( $args['status'] )       { $where[] = 'status = %s';           $params[] = $args['status']; }
     if ( $args['website_type'] ) { $where[] = 'website_type = %s';     $params[] = $args['website_type']; }
     if ( $args['package'] )      { $where[] = 'package_interest = %s'; $params[] = $args['package']; }
-    if ( $args['month'] && $args['year'] ) {
-        $where[] = 'MONTH(created_at) = %d AND YEAR(created_at) = %d';
-        $params[] = intval($args['month']); $params[] = intval($args['year']);
-    } elseif ( $args['year'] ) {
-        $where[] = 'YEAR(created_at) = %d'; $params[] = intval($args['year']);
+    if ( $args['priority'] )     { $where[] = 'priority = %s';         $params[] = $args['priority']; }
+    if ( $args['language'] )     { $where[] = 'locale = %s';           $params[] = $args['language']; }
+    if ( $args['preferred_contact'] ) { $where[] = 'preferred_contact = %s'; $params[] = $args['preferred_contact']; }
+    if ( $args['maintenance'] !== '' ) { $where[] = 'maintenance = %d'; $params[] = intval($args['maintenance']); }
+
+    // Source : normalisée. 'whatsapp' = source contient whatsapp, 'website' = le reste.
+    if ( $args['source'] === 'whatsapp' ) {
+        $where[] = "source LIKE %s"; $params[] = '%whatsapp%';
+    } elseif ( $args['source'] === 'website' ) {
+        $where[] = "source NOT LIKE %s"; $params[] = '%whatsapp%';
     }
+
+    // Archivage.
+    if ( $args['archived'] === '1' ) {
+        $where[] = 'archived = 1';
+    } elseif ( $args['archived'] !== 'all' ) {
+        $where[] = 'archived = 0';
+    }
+
+    // Plage de dates (prioritaire sur month/year si fournie).
+    if ( $args['date_from'] ) { $where[] = 'created_at >= %s'; $params[] = $args['date_from'] . ' 00:00:00'; }
+    if ( $args['date_to'] )   { $where[] = 'created_at <= %s'; $params[] = $args['date_to'] . ' 23:59:59'; }
+
+    if ( ! $args['date_from'] && ! $args['date_to'] ) {
+        if ( $args['month'] && $args['year'] ) {
+            $where[] = 'MONTH(created_at) = %d AND YEAR(created_at) = %d';
+            $params[] = intval($args['month']); $params[] = intval($args['year']);
+        } elseif ( $args['year'] ) {
+            $where[] = 'YEAR(created_at) = %d'; $params[] = intval($args['year']);
+        }
+    }
+
     if ( $args['search'] ) {
-        $where[] = '(full_name LIKE %s OR phone LIKE %s OR email LIKE %s OR message LIKE %s)';
+        $where[] = '(full_name LIKE %s OR phone LIKE %s OR email LIKE %s OR reference LIKE %s OR message LIKE %s)';
         $like = '%' . $wpdb->esc_like( $args['search'] ) . '%';
-        $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
+        $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like;
     }
 
     $where_sql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
@@ -508,35 +624,56 @@ function vb_insert_lead( $data ) {
         if ( $dup ) return 'duplicate';
     }
 
+    $priority = strtolower( sanitize_text_field($data['priority'] ?? 'medium') );
+    if ( ! array_key_exists( $priority, vb_lead_priorities() ) ) $priority = 'medium';
+
     $fields = [
-        'full_name'        => sanitize_text_field($data['full_name'] ?? ''),
-        'phone'            => $phone,
-        'email'            => $email,
-        'website_type'     => sanitize_text_field($data['website_type'] ?? ''),
-        'package_interest' => sanitize_text_field($data['package_interest'] ?? ''),
-        'domain_status'    => sanitize_text_field($data['domain_status'] ?? ''),
-        'message'          => sanitize_textarea_field($data['message'] ?? ''),
-        'locale'           => sanitize_text_field($data['locale'] ?? ''),
-        'status'           => 'new',
-        'source'           => sanitize_text_field($data['source'] ?? 'website_form'),
-        'utm_source'       => sanitize_text_field($data['utm_source'] ?? ''),
-        'utm_medium'       => sanitize_text_field($data['utm_medium'] ?? ''),
-        'utm_campaign'     => sanitize_text_field($data['utm_campaign'] ?? ''),
-        'referer'          => esc_url_raw($data['referer'] ?? ''),
-        'ip'               => sanitize_text_field($data['ip'] ?? ''),
+        'reference'         => sanitize_text_field($data['reference'] ?? ''),
+        'full_name'         => sanitize_text_field($data['full_name'] ?? ''),
+        'phone'             => $phone,
+        'email'             => $email,
+        'website_type'      => sanitize_text_field($data['website_type'] ?? ''),
+        'project_type'      => sanitize_text_field($data['project_type'] ?? ''),
+        'products_count'    => sanitize_text_field($data['products_count'] ?? ''),
+        'package_interest'  => sanitize_text_field($data['package_interest'] ?? ''),
+        'domain_status'     => sanitize_text_field($data['domain_status'] ?? ''),
+        'content_ready'     => sanitize_text_field($data['content_ready'] ?? ''),
+        'maintenance'       => ! empty($data['maintenance']) ? 1 : 0,
+        'preferred_contact' => sanitize_text_field($data['preferred_contact'] ?? ''),
+        'priority'          => $priority,
+        'message'           => sanitize_textarea_field($data['message'] ?? ''),
+        'locale'            => sanitize_text_field($data['locale'] ?? ''),
+        'status'            => 'new',
+        'source'            => sanitize_text_field($data['source'] ?? 'website_form'),
+        'utm_source'        => sanitize_text_field($data['utm_source'] ?? ''),
+        'utm_medium'        => sanitize_text_field($data['utm_medium'] ?? ''),
+        'utm_campaign'      => sanitize_text_field($data['utm_campaign'] ?? ''),
+        'referer'           => esc_url_raw($data['referer'] ?? ''),
+        'ip'                => sanitize_text_field($data['ip'] ?? ''),
     ];
 
     $inserted = $wpdb->insert($table, $fields);
-    return $inserted === false ? false : $wpdb->insert_id;
+    if ( $inserted === false ) return false;
+
+    $id = $wpdb->insert_id;
+
+    // Référence lisible et cherchable si aucune n'a été fournie par la source.
+    if ( $fields['reference'] === '' ) {
+        $wpdb->update( $table, [ 'reference' => sprintf( 'LEAD-%05d', $id ) ], [ 'id' => $id ] );
+    }
+
+    return $id;
 }
 
 function vb_update_lead( $id, $data ) {
     global $wpdb;
     $table   = $wpdb->prefix . 'vb_leads';
     $allowed = [
-        'full_name', 'phone', 'email', 'website_type', 'package_interest',
-        'domain_status', 'message', 'status', 'quoted_price', 'lost_reason',
-        'internal_note', 'project_id', 'first_contact_at',
+        'full_name', 'phone', 'email', 'website_type', 'project_type',
+        'products_count', 'package_interest', 'domain_status', 'content_ready',
+        'maintenance', 'preferred_contact', 'priority', 'message', 'status',
+        'quoted_price', 'lost_reason', 'internal_note', 'assigned_to',
+        'archived', 'project_id', 'first_contact_at',
     ];
 
     $fields = [];
@@ -547,6 +684,9 @@ function vb_update_lead( $id, $data ) {
                 $fields[$key] = sanitize_email($data[$key]); break;
             case 'quoted_price':
                 $fields[$key] = floatval($data[$key]); break;
+            case 'maintenance':
+            case 'archived':
+                $fields[$key] = ! empty($data[$key]) ? 1 : 0; break;
             case 'project_id':
                 $fields[$key] = $data[$key] ? intval($data[$key]) : null; break;
             case 'message':
@@ -588,7 +728,18 @@ function vb_convert_lead_to_project( $lead_id ) {
     if ( ! $lead ) return false;
     if ( $lead->project_id ) return intval($lead->project_id); // déjà converti
 
-    $type_labels = vb_lead_website_types();
+    $type_labels    = vb_lead_website_types();
+    $ptype_labels   = vb_lead_project_types();
+    $content_labels = vb_lead_content_readiness();
+
+    // Récapitulatif de qualification injecté dans les notes du projet.
+    $qualif = [];
+    if ( ! empty($lead->reference) )      $qualif[] = "Référence : {$lead->reference}";
+    if ( ! empty($lead->project_type) )   $qualif[] = "Type de projet : " . ( $ptype_labels[$lead->project_type] ?? $lead->project_type );
+    if ( ! empty($lead->products_count) ) $qualif[] = "Produits/services : {$lead->products_count}";
+    if ( ! empty($lead->content_ready) )  $qualif[] = "Contenu : " . ( $content_labels[$lead->content_ready] ?? $lead->content_ready );
+    if ( ! empty($lead->maintenance) )    $qualif[] = "Maintenance souhaitée : oui";
+    $qualif_txt = $qualif ? implode("\n", $qualif) . "\n" : '';
 
     $project_id = vb_save_project([
         'client_name'  => $lead->full_name,
@@ -599,8 +750,9 @@ function vb_convert_lead_to_project( $lead_id ) {
         'status'       => 'in_progress',
         'start_date'   => current_time('Y-m-d'),
         'notes'        => trim(
-            "Lead #{$lead->id} reçu le " . date('d/m/Y', strtotime($lead->created_at)) . "\n" .
-            ( $lead->message ? "Demande du client :\n{$lead->message}\n" : '' ) .
+            "Lead {$lead->reference} (" . ucfirst( vb_normalize_lead_source($lead->source) ) . ") reçu le " . date('d/m/Y', strtotime($lead->created_at)) . "\n" .
+            $qualif_txt .
+            ( $lead->message ? "\nDemande du client :\n{$lead->message}\n" : '' ) .
             ( $lead->internal_note ? "\nNote interne :\n{$lead->internal_note}" : '' )
         ),
         'tags'         => $lead->package_interest,
@@ -626,6 +778,10 @@ function vb_get_leads_stats( $month = '', $year = '' ) {
     }
     $where_sql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
+    // Les leads archivés ne comptent pas dans le tableau de bord.
+    $where[] = 'archived = 0';
+    $where_sql = 'WHERE ' . implode(' AND ', $where);
+
     $sql = "SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status='new'       THEN 1 ELSE 0 END) as new_count,
@@ -633,6 +789,9 @@ function vb_get_leads_stats( $month = '', $year = '' ) {
         SUM(CASE WHEN status='quoted'    THEN 1 ELSE 0 END) as quoted_count,
         SUM(CASE WHEN status='won'       THEN 1 ELSE 0 END) as won_count,
         SUM(CASE WHEN status='lost'      THEN 1 ELSE 0 END) as lost_count,
+        SUM(CASE WHEN INSTR(source,'whatsapp') > 0 THEN 1 ELSE 0 END) as whatsapp_count,
+        SUM(CASE WHEN INSTR(source,'whatsapp') = 0 THEN 1 ELSE 0 END) as website_count,
+        SUM(CASE WHEN priority='high' AND status IN ('new','contacted') THEN 1 ELSE 0 END) as high_priority_open,
         SUM(CASE WHEN status='quoted' THEN quoted_price ELSE 0 END) as pipeline_value,
         AVG(CASE WHEN first_contact_at IS NOT NULL
                  THEN TIMESTAMPDIFF(HOUR, created_at, first_contact_at) END) as avg_response_hours

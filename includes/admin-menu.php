@@ -8,7 +8,7 @@ function vb_register_menus() {
         'vendbase', 'vb_page_dashboard', 'dashicons-chart-area', 3
     );
     add_submenu_page( 'vendbase', 'Dashboard',        'Dashboard',         'manage_options', 'vendbase',          'vb_page_dashboard' );
-    add_submenu_page( 'vendbase', 'Demandes clients', vb_leads_menu_label(), 'manage_options', 'vendbase-leads',  'vb_page_leads'     );
+    add_submenu_page( 'vendbase', 'Leads CRM',        vb_leads_menu_label(), 'manage_options', 'vendbase-leads',  'vb_page_leads'     );
     add_submenu_page( 'vendbase', 'Projets',          'Projets',           'manage_options', 'vendbase-projects', 'vb_page_projects'  );
     add_submenu_page( 'vendbase', 'Nouveau projet',   'Nouveau',           'manage_options', 'vendbase-new',      'vb_page_form'      );
     add_submenu_page( 'vendbase', 'Editer',           '',                  'manage_options', 'vendbase-edit',     'vb_page_form'      );
@@ -36,18 +36,21 @@ function vb_backup_menu_label() {
 }
 
 /**
- * Libellé du menu "Demandes" avec une pastille rouge indiquant
- * le nombre de leads jamais traités (statut = new).
+ * Libellé du menu "Leads CRM" avec une pastille rouge indiquant
+ * le nombre de leads jamais traités (statut = new, non archivés).
  */
 function vb_leads_menu_label() {
     global $wpdb;
     $table = $wpdb->prefix . 'vb_leads';
-    $label = '📩 Demandes';
+    $label = '📥 Leads CRM';
 
     if ( $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table ) ) !== $table ) {
         return $label;
     }
-    $new = intval( $wpdb->get_var( "SELECT COUNT(*) FROM $table WHERE status = 'new'" ) );
+    $has_archived = in_array( 'archived', $wpdb->get_col( "DESC $table", 0 ), true );
+    $new = intval( $wpdb->get_var(
+        "SELECT COUNT(*) FROM $table WHERE status = 'new'" . ( $has_archived ? " AND archived = 0" : "" )
+    ) );
     if ( $new > 0 ) {
         $label .= ' <span class="awaiting-mod"><span class="pending-count">' . $new . '</span></span>';
     }
