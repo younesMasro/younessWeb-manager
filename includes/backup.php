@@ -51,7 +51,13 @@ function vb_build_backup_data( $include_credentials = true ) {
         'options' => [
             // La clé API du formulaire : sans elle, le site Next.js ne peut
             // plus envoyer de demandes après une restauration.
-            'vb_lead_api_secret' => get_option( 'vb_lead_api_secret' ),
+            'vb_lead_api_secret'     => get_option( 'vb_lead_api_secret' ),
+            // Idem pour le canal WhatsApp : sans elle, le Cloudflare Worker
+            // ne peut plus déposer de leads après une restauration.
+            'vb_whatsapp_api_secret' => get_option( 'vb_whatsapp_api_secret' ),
+            // Modèles de premier message WhatsApp personnalisés.
+            'vb_wa_templates'        => get_option( 'vb_wa_templates' ),
+            'vb_wa_fallback_lang'    => get_option( 'vb_wa_fallback_lang' ),
         ],
     ];
 
@@ -272,9 +278,12 @@ function vb_restore_backup( $data, $mode = 'merge' ) {
         $imported[ $key ] = $count;
     }
 
-    // Restaure la clé API pour que le formulaire du site refonctionne.
-    if ( ! empty( $data['options']['vb_lead_api_secret'] ) ) {
-        update_option( 'vb_lead_api_secret', $data['options']['vb_lead_api_secret'], false );
+    // Restaure les clés API pour que le formulaire du site et le Worker
+    // WhatsApp refonctionnent, ainsi que les modèles de messages.
+    foreach ( [ 'vb_lead_api_secret', 'vb_whatsapp_api_secret', 'vb_wa_templates', 'vb_wa_fallback_lang' ] as $opt ) {
+        if ( ! empty( $data['options'][ $opt ] ) ) {
+            update_option( $opt, $data['options'][ $opt ], false );
+        }
     }
 
     return $imported;

@@ -39,6 +39,7 @@ rsync -a \
   --exclude '.gitignore' \
   --exclude '.DS_Store' \
   --exclude 'build.sh' \
+  --exclude 'tests/' \
   --exclude '*.zip' \
   --exclude 'backups/' \
   "$ROOT/" "$STAGE/$SLUG/"

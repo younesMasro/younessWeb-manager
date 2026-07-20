@@ -43,14 +43,6 @@ $high_open  = intval($stats->high_priority_open ?? 0);
 $won_c      = intval($stats->won_count ?? 0);
 $conv_rate  = $total > 0 ? round(($won_c / $total) * 100) : 0;
 
-if ( ! function_exists('vb_lead_wa_number') ) {
-    function vb_lead_wa_number( $phone ) {
-        $n = preg_replace('/[^0-9]/', '', $phone);
-        if ( strlen($n) === 10 && $n[0] === '0' ) $n = '212' . substr($n, 1);
-        return $n;
-    }
-}
-
 // Construit le jeu de données JS pour le panneau de détail (labels pré-calculés).
 $leads_js = [];
 foreach ( $leads as $l ) {
@@ -61,6 +53,8 @@ foreach ( $leads as $l ) {
         'name'       => $l->full_name,
         'phone'      => $l->phone,
         'wa'         => vb_lead_wa_number($l->phone),
+        // Lien WhatsApp avec le premier message déjà rédigé, dans la langue du lead.
+        'wa_url'     => vb_wa_link_for_lead($l),
         'email'      => $l->email,
         'source'     => $src,
         'source_lbl' => $L_source[$src]['label'] ?? $src,
@@ -101,6 +95,9 @@ foreach ( $leads as $l ) {
     <div class="vb-header-right">
         <a href="<?= admin_url('admin.php?page=vendbase-leads' . ($f['archived']==='1' ? '' : '&archived=1')) ?>"
            class="vb-btn vb-btn-ghost"><?= $f['archived']==='1' ? '← Actifs' : '🗄️ Archivés' ?></a>
+        <button class="vb-btn vb-btn-secondary" id="vb-show-wa-templates">
+            <span class="dashicons dashicons-whatsapp"></span> Messages WhatsApp
+        </button>
         <button class="vb-btn vb-btn-secondary" id="vb-show-api-config">
             <span class="dashicons dashicons-admin-network"></span> Connexions API
         </button>
@@ -239,7 +236,7 @@ foreach ( $leads as $l ) {
     <?php foreach ($leads as $l):
         $src   = vb_normalize_lead_source($l->source);
         $prio  = $l->priority ?: 'medium';
-        $wa    = vb_lead_wa_number($l->phone);
+        $wa_url = vb_wa_link_for_lead($l);
         $age_h = ( current_time('timestamp') - strtotime($l->created_at) ) / 3600;
         $cold  = ( $l->status === 'new' && $age_h > 24 );
     ?>
@@ -277,7 +274,7 @@ foreach ( $leads as $l ) {
             <td class="vb-actions-cell vb-crm-actions">
                 <button class="vb-action-btn vb-lead-open" data-id="<?= $l->id ?>" title="Ouvrir"><span class="dashicons dashicons-visibility"></span></button>
                 <?php if ($l->phone): ?><a class="vb-action-btn" href="tel:<?= esc_attr(preg_replace('/[^0-9+]/','',$l->phone)) ?>" title="Appeler"><span class="dashicons dashicons-phone"></span></a><?php endif; ?>
-                <?php if ($wa): ?><a class="vb-action-btn" href="https://wa.me/<?= esc_attr($wa) ?>" target="_blank" title="WhatsApp"><span class="dashicons dashicons-whatsapp"></span></a><?php endif; ?>
+                <?php if ($wa_url): ?><a class="vb-action-btn" href="<?= esc_url($wa_url) ?>" target="_blank" rel="noopener" title="WhatsApp — message pré-rempli en <?= esc_attr(strtoupper(vb_wa_lead_language($l))) ?>"><span class="dashicons dashicons-whatsapp"></span></a><?php endif; ?>
                 <?php if ($l->email): ?><a class="vb-action-btn" href="mailto:<?= esc_attr($l->email) ?>" title="Email"><span class="dashicons dashicons-email"></span></a><?php endif; ?>
                 <?php if (!$l->project_id): ?><button class="vb-action-btn vb-lead-convert" data-id="<?= $l->id ?>" title="Convertir en projet"><span class="dashicons dashicons-migrate"></span></button><?php endif; ?>
                 <button class="vb-action-btn vb-lead-archive" data-id="<?= $l->id ?>" data-archived="<?= $f['archived']==='1' ? '1' : '0' ?>" title="<?= $f['archived']==='1' ? 'Désarchiver' : 'Archiver' ?>"><span class="dashicons dashicons-archive"></span></button>
@@ -368,6 +365,52 @@ foreach ( $leads as $l ) {
     </div>
 </div>
 
+<!-- ================== MODAL MODÈLES DE MESSAGES WHATSAPP ================== -->
+<?php $wa_tpl = vb_wa_templates(); $wa_langs = vb_wa_template_languages(); $wa_fb = vb_wa_fallback_language(); ?>
+<div class="vb-modal" id="vb-wa-tpl-modal" style="display:none">
+    <div class="vb-modal-backdrop"></div>
+    <div class="vb-modal-box vb-modal-md">
+        <div class="vb-modal-header">
+            <h2>💬 Premier message WhatsApp</h2>
+            <button class="vb-modal-close" type="button">&times;</button>
+        </div>
+        <div class="vb-modal-body">
+            <p class="vb-sub" style="margin-top:0">
+                Cliquer sur le bouton WhatsApp d'un lead ouvre la conversation avec ce message
+                <strong>déjà écrit</strong>, dans la langue choisie par le client.
+                Rien n'est envoyé automatiquement : tu relis, tu modifies si besoin, puis tu envoies.
+            </p>
+
+            <div class="vb-notice vb-notice-box" style="margin-bottom:12px">
+                Variables utilisables : <code>{name}</code> (nom complet),
+                <code>{first_name}</code> (prénom), <code>{reference}</code> (référence du lead).
+            </div>
+
+            <?php foreach ($wa_langs as $code => $label): ?>
+            <div class="vb-form-group">
+                <label class="vb-label"><?= esc_html($label) ?> <span class="vb-sub">(<?= esc_html(strtoupper($code)) ?>)</span></label>
+                <textarea class="vb-input vb-wa-tpl" data-lang="<?= esc_attr($code) ?>" rows="6"
+                          style="font-family:inherit;line-height:1.6<?= $code === 'ar' ? ';direction:rtl;text-align:right' : '' ?>"><?= esc_textarea($wa_tpl[$code]) ?></textarea>
+            </div>
+            <?php endforeach; ?>
+
+            <div class="vb-form-group">
+                <label class="vb-label">Langue par défaut</label>
+                <select class="vb-select" id="vb-wa-fallback">
+                    <?php foreach ($wa_langs as $code => $label): ?>
+                    <option value="<?= esc_attr($code) ?>" <?= selected($wa_fb, $code, false) ?>><?= esc_html($label) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <span class="vb-sub">Utilisée quand le lead n'a pas déclaré de langue.</span>
+            </div>
+        </div>
+        <div class="vb-modal-footer">
+            <button class="vb-btn vb-btn-ghost" id="vb-wa-tpl-reset">Restaurer les modèles d'origine</button>
+            <button class="vb-btn vb-btn-primary" id="vb-wa-tpl-save">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
 <!-- ======================= MODAL CONNEXIONS API ======================= -->
 <div class="vb-modal" id="vb-api-modal" style="display:none">
     <div class="vb-modal-backdrop"></div>
@@ -448,7 +491,7 @@ foreach ( $leads as $l ) {
 
         var qa = [];
         if (d.phone) qa.push('<a class="vb-btn vb-btn-sm vb-btn-ghost" href="tel:'+d.phone.replace(/[^0-9+]/g,'')+'"><span class="dashicons dashicons-phone"></span> Appeler</a>');
-        if (d.wa)    qa.push('<a class="vb-btn vb-btn-sm vb-btn-ghost" target="_blank" href="https://wa.me/'+d.wa+'"><span class="dashicons dashicons-whatsapp"></span> WhatsApp</a>');
+        if (d.wa_url) qa.push('<a class="vb-btn vb-btn-sm vb-btn-ghost" target="_blank" rel="noopener" href="'+d.wa_url+'"><span class="dashicons dashicons-whatsapp"></span> WhatsApp</a>');
         if (d.email) qa.push('<a class="vb-btn vb-btn-sm vb-btn-ghost" href="mailto:'+d.email+'"><span class="dashicons dashicons-email"></span> Email</a>');
         $('#vb-p-quickactions').html(qa.join(' '));
 
@@ -529,6 +572,66 @@ foreach ( $leads as $l ) {
         if (!confirm('Régénérer la clé WhatsApp ?\n\nLe Cloudflare Worker ne pourra plus envoyer de leads tant que tu n\'auras pas mis à jour la clé de ton côté.')) return;
         $.post(VB.ajax, {action:'vb_regenerate_whatsapp_secret', nonce:VB.nonce}, function(r){
             if (r.success){ $('#vb-wa-secret').val(r.data.secret); toast('Nouvelle clé générée'); }
+        });
+    });
+
+    // ----- Modèles de messages WhatsApp -----
+    $('#vb-show-wa-templates').on('click', function(){ $('#vb-wa-tpl-modal').show(); });
+
+    function collectTemplates(){
+        var t = {};
+        $('.vb-wa-tpl').each(function(){ t[$(this).data('lang')] = $(this).val(); });
+        return t;
+    }
+
+    /**
+     * Recalcule les liens wa.me de la page après enregistrement, pour que le
+     * nouveau message serve immédiatement — sans recharger la page.
+     */
+    function refreshWaLinks(templates, fallback){
+        $.each(LEADS, function(id, d){
+            if (!d.wa) return;
+            // Même normalisation que côté PHP : 'ar-MA' -> 'ar'.
+            var lang = (d.lang || '').toLowerCase().substring(0, 2);
+            var tpl  = templates[lang] || templates[fallback] || '';
+            var msg = tpl.replace(/\{name\}/g, d.name || '')
+                         .replace(/\{first_name\}/g, (d.name || '').split(/\s+/)[0] || '')
+                         .replace(/\{reference\}/g, d.reference || '');
+            d.wa_url = 'https://wa.me/' + d.wa + '?text=' + encodeURIComponent(msg);
+            $('.vb-lead-row[data-id="'+id+'"] a[href^="https://wa.me/"]').attr('href', d.wa_url);
+        });
+        if (current) openLead(current);
+    }
+
+    $('#vb-wa-tpl-save').on('click', function(){
+        var $b = $(this).prop('disabled', true);
+        $.post(VB.ajax, {
+            action: 'vb_save_wa_templates',
+            nonce: VB.nonce,
+            templates: collectTemplates(),
+            fallback_lang: $('#vb-wa-fallback').val()
+        }, function(r){
+            $b.prop('disabled', false);
+            if (r.success){
+                refreshWaLinks(r.data.templates, $('#vb-wa-fallback').val());
+                $('#vb-wa-tpl-modal').hide();
+                toast('Modèles enregistrés');
+            } else {
+                toast('Erreur lors de l\'enregistrement', false);
+            }
+        }).fail(function(){ $b.prop('disabled', false); toast('Erreur réseau', false); });
+    });
+
+    $('#vb-wa-tpl-reset').on('click', function(){
+        if (!confirm('Restaurer les modèles d\'origine ?\n\nTes textes personnalisés seront perdus.')) return;
+        $.post(VB.ajax, {action:'vb_reset_wa_templates', nonce:VB.nonce}, function(r){
+            if (!r.success) return toast('Erreur', false);
+            $('.vb-wa-tpl').each(function(){
+                var l = $(this).data('lang');
+                if (r.data.templates[l] !== undefined) $(this).val(r.data.templates[l]);
+            });
+            refreshWaLinks(r.data.templates, $('#vb-wa-fallback').val());
+            toast('Modèles d\'origine restaurés');
         });
     });
 })(jQuery);

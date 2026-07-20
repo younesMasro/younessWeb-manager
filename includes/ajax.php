@@ -236,3 +236,31 @@ add_action('wp_ajax_vb_regenerate_whatsapp_secret', function() {
     update_option('vb_whatsapp_api_secret', $secret, false);
     wp_send_json_success(['secret' => $secret]);
 });
+
+/* ── Modèles de messages WhatsApp (v2.6) ── */
+add_action('wp_ajax_vb_save_wa_templates', function() {
+    check_ajax_referer('vb_nonce', 'nonce');
+    if ( ! current_user_can('manage_options') ) wp_send_json_error('Unauthorized');
+
+    $raw       = $_POST['templates'] ?? [];
+    $templates = [];
+    if ( is_array($raw) ) {
+        foreach ( $raw as $lang => $text ) {
+            // wp_unslash : WordPress échappe les quotes du POST, sans quoi
+            // « J'ai bien reçu » finirait en « J\'ai bien reçu ».
+            $templates[ sanitize_text_field($lang) ] = wp_unslash( (string) $text );
+        }
+    }
+    $fallback = sanitize_text_field($_POST['fallback_lang'] ?? '');
+
+    vb_wa_save_templates($templates, $fallback ?: null);
+    wp_send_json_success(['templates' => vb_wa_templates()]);
+});
+
+/* ── Modèles WhatsApp : restaurer les modèles d'usine ── */
+add_action('wp_ajax_vb_reset_wa_templates', function() {
+    check_ajax_referer('vb_nonce', 'nonce');
+    if ( ! current_user_can('manage_options') ) wp_send_json_error('Unauthorized');
+    delete_option('vb_wa_templates');
+    wp_send_json_success(['templates' => vb_wa_templates()]);
+});
