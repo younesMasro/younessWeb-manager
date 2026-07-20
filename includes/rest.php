@@ -170,7 +170,7 @@ function vb_rest_create_whatsapp_lead( WP_REST_Request $request ) {
     $priority = strtolower( (string) ( $b['priority'] ?? 'medium' ) );
     if ( ! in_array( $priority, [ 'high', 'medium', 'low' ], true ) ) $priority = 'medium';
 
-    $result = vb_insert_lead( [
+    $result = vb_upsert_lead_by_reference( [
         'reference'         => sanitize_text_field( $b['reference'] ?? '' ),
         'full_name'         => $name,
         'phone'             => $phone,
@@ -193,17 +193,28 @@ function vb_rest_create_whatsapp_lead( WP_REST_Request $request ) {
     if ( $result === 'duplicate' ) {
         return new WP_REST_Response( [ 'success' => true, 'duplicate' => true ], 200 );
     }
-    if ( ! $result ) {
+    if ( ! is_array( $result ) ) {
         return new WP_REST_Response( [ 'error' => 'Could not save lead' ], 500 );
     }
 
-    $lead = vb_get_lead( $result );
-    do_action( 'vb_lead_received', $result, $b );
-    do_action( 'vb_whatsapp_lead_received', $result, $b );
+    $id      = $result['id'];
+    $created = $result['created'];
+    $lead    = vb_get_lead( $id );
+
+    // Les hooks de notification ne se déclenchent qu'à la création : un
+    // renvoi de qualification ne doit pas re-notifier.
+    if ( $created ) {
+        do_action( 'vb_lead_received', $id, $b );
+        do_action( 'vb_whatsapp_lead_received', $id, $b );
+    } else {
+        do_action( 'vb_whatsapp_lead_updated', $id, $b );
+    }
 
     return new WP_REST_Response( [
         'success'   => true,
-        'id'        => $result,
+        'id'        => $id,
+        'created'   => $created,
+        'updated'   => ! $created,
         'reference' => $lead ? $lead->reference : '',
-    ], 201 );
+    ], $created ? 201 : 200 );
 }

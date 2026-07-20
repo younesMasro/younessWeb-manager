@@ -391,7 +391,8 @@ function vb_create_leads_table() {
         KEY idx_created (created_at),
         KEY idx_project (project_id),
         KEY idx_source (source),
-        KEY idx_archived (archived)
+        KEY idx_archived (archived),
+        KEY idx_reference (reference)
     ) $charset;";
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -414,6 +415,13 @@ function vb_create_leads_table() {
     foreach ( $new_cols as $col => $alter ) {
         if ( ! in_array( $col, $existing, true ) ) $wpdb->query( $alter );
     }
+
+    // Index sur `reference` : la déduplication WhatsApp interroge cette colonne
+    // à chaque message entrant. dbDelta ne l'ajoute pas sur une table existante.
+    $has_idx = $wpdb->get_var( $wpdb->prepare(
+        "SHOW INDEX FROM $table WHERE Key_name = %s", 'idx_reference'
+    ) );
+    if ( ! $has_idx ) $wpdb->query( "ALTER TABLE $table ADD KEY idx_reference (reference)" );
 }
 
 /** Source d'un lead : normalisée en 'website' ou 'whatsapp'. */
@@ -594,6 +602,57 @@ function vb_get_lead( $id ) {
     return $wpdb->get_row( $wpdb->prepare("SELECT * FROM $table WHERE id = %d", intval($id)) );
 }
 
+/** Retrouve un lead par sa référence métier (LEAD-xxxxx, WA-xxxxx…). */
+function vb_get_lead_by_reference( $reference ) {
+    global $wpdb;
+    $reference = sanitize_text_field( (string) $reference );
+    if ( $reference === '' ) return null;
+
+    $table = $wpdb->prefix . 'vb_leads';
+    return $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM $table WHERE reference = %s ORDER BY id ASC LIMIT 1", $reference
+    ) );
+}
+
+/**
+ * Point d'entrée unique des sources externes (formulaire du site, agent
+ * WhatsApp). La `reference` fait autorité :
+ *
+ *  - référence déjà connue  → on MET À JOUR le lead existant (jamais de doublon).
+ *    Une conversation WhatsApp arrive par étapes : chaque renvoi enrichit la
+ *    même fiche au lieu d'en créer une nouvelle.
+ *  - référence inconnue/absente → insertion normale via vb_insert_lead().
+ *
+ * Ne crée jamais de projet : la conversion reste manuelle.
+ *
+ * @return array{id:int,created:bool}|'duplicate'|false
+ */
+function vb_upsert_lead_by_reference( $data ) {
+    $existing = vb_get_lead_by_reference( $data['reference'] ?? '' );
+
+    if ( ! $existing ) {
+        $id = vb_insert_lead( $data );
+        if ( $id === 'duplicate' || ! $id ) return $id;
+        return [ 'id' => intval($id), 'created' => true ];
+    }
+
+    // Mise à jour : on réutilise vb_update_lead() (whitelist + sanitisation
+    // partagées). On retire les champs qui appartiennent au cycle de vie CRM
+    // et non à la source — écraser le statut effacerait le travail commercial.
+    $patch = $data;
+    unset( $patch['status'], $patch['reference'], $patch['source'], $patch['project_id'],
+           $patch['quoted_price'], $patch['internal_note'], $patch['assigned_to'], $patch['archived'] );
+
+    // Un champ vide côté source ne doit pas écraser une valeur déjà saisie.
+    foreach ( $patch as $k => $v ) {
+        if ( $v === '' || $v === null ) unset( $patch[$k] );
+    }
+
+    if ( $patch ) vb_update_lead( $existing->id, $patch );
+
+    return [ 'id' => intval($existing->id), 'created' => false ];
+}
+
 /**
  * Insère un lead venant du formulaire du site.
  * Déduplique sur (téléphone|email) dans les dernières 24h pour éviter
@@ -612,8 +671,14 @@ function vb_insert_lead( $data ) {
     $phone = sanitize_text_field($data['phone'] ?? '');
     $email = sanitize_email($data['email'] ?? '');
 
-    // Anti-doublon : même téléphone OU même email dans les 24 dernières heures.
-    if ( $phone || $email ) {
+    // Anti-doublon heuristique : même téléphone OU même email dans les 24h.
+    // Ignoré quand la source fournit une `reference` explicite : celle-ci fait
+    // alors autorité (cf. vb_upsert_lead_by_reference). Sans ce garde-fou, une
+    // qualification WhatsApp serait silencieusement jetée si le même contact
+    // avait rempli le formulaire du site le matin même.
+    $has_reference = trim( (string) ( $data['reference'] ?? '' ) ) !== '';
+
+    if ( ! $has_reference && ( $phone || $email ) ) {
         $dup = $wpdb->get_var( $wpdb->prepare(
             "SELECT id FROM $table
              WHERE created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
@@ -673,7 +738,7 @@ function vb_update_lead( $id, $data ) {
         'products_count', 'package_interest', 'domain_status', 'content_ready',
         'maintenance', 'preferred_contact', 'priority', 'message', 'status',
         'quoted_price', 'lost_reason', 'internal_note', 'assigned_to',
-        'archived', 'project_id', 'first_contact_at',
+        'archived', 'project_id', 'first_contact_at', 'locale',
     ];
 
     $fields = [];
