@@ -42,6 +42,8 @@ rsync -a \
   --exclude 'tests/' \
   --exclude '*.zip' \
   --exclude 'backups/' \
+  --exclude 'import/' \
+  --exclude '*.csv' \
   "$ROOT/" "$STAGE/$SLUG/"
 
 rm -f "$OUT"

@@ -11,6 +11,12 @@
 backups/
 *.zip
 
+# Import historique des clients + tableur d'origine.
+# ⚠️ Ces fichiers contiennent les mots de passe des sites clients EN CLAIR.
+# Le dépôt est public : ils ne doivent jamais y être commités.
+import/
+*.csv
+
 # Éditeurs
 .vscode/
 .idea/
