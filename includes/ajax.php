@@ -264,3 +264,128 @@ add_action('wp_ajax_vb_reset_wa_templates', function() {
     delete_option('vb_wa_templates');
     wp_send_json_success(['templates' => vb_wa_templates()]);
 });
+
+/* ============================================================
+   CONTRATS — v2.7 addition
+============================================================ */
+
+/** Garde commune : nonce + capability. */
+function vb_ajax_guard_contracts() {
+    check_ajax_referer('vb_nonce', 'nonce');
+    if ( ! current_user_can('manage_options') ) wp_send_json_error('Unauthorized');
+}
+
+/* ── Changer le statut d'un contrat ── */
+add_action('wp_ajax_vb_update_contract_status', function() {
+    vb_ajax_guard_contracts();
+    global $wpdb;
+
+    $id     = intval($_POST['id'] ?? 0);
+    $status = sanitize_text_field($_POST['status'] ?? '');
+
+    if ( ! array_key_exists($status, vb_contract_statuses()) ) {
+        wp_send_json_error('Statut invalide');
+    }
+    if ( ! vb_get_contract($id) ) wp_send_json_error('Contrat introuvable');
+
+    // Passer à « signé » n'est pas un simple changement de colonne : ça
+    // déclenche la propagation vers le projet. On passe par vb_sign_contract().
+    if ( $status === 'signed' ) {
+        $ok = vb_sign_contract($id, sanitize_text_field($_POST['signed_date'] ?? ''), sanitize_text_field($_POST['signed_by'] ?? ''));
+        $ok ? wp_send_json_success(['status' => 'signed']) : wp_send_json_error('Signature impossible');
+    }
+
+    $r = $wpdb->update($wpdb->prefix . 'vb_contracts', ['status' => $status], ['id' => $id]);
+    $r === false ? wp_send_json_error('Mise à jour impossible') : wp_send_json_success(['status' => $status]);
+});
+
+/* ── Supprimer un contrat ── */
+add_action('wp_ajax_vb_delete_contract', function() {
+    vb_ajax_guard_contracts();
+
+    $id       = intval($_POST['id'] ?? 0);
+    $contract = vb_get_contract($id);
+    if ( ! $contract ) wp_send_json_error('Contrat introuvable');
+
+    // Un contrat signé est une preuve : on ne l'efface pas d'un clic dans une
+    // liste. Il faut d'abord l'annuler explicitement.
+    if ( vb_contract_is_locked($contract) ) {
+        wp_send_json_error('Un contrat signé ne peut pas être supprimé. Annulez-le d\'abord.');
+    }
+
+    vb_delete_contract($id);
+    wp_send_json_success();
+});
+
+/* ── Pré-remplir un contrat depuis un projet ── */
+add_action('wp_ajax_vb_contract_prefill', function() {
+    vb_ajax_guard_contracts();
+
+    $project_id = intval($_GET['project_id'] ?? $_POST['project_id'] ?? 0);
+    $template   = sanitize_text_field($_GET['template'] ?? $_POST['template'] ?? 'creation');
+
+    $data = vb_contract_prefill_from_project($project_id, $template);
+    $data ? wp_send_json_success($data) : wp_send_json_error('Projet introuvable');
+});
+
+/* ── Aligner le projet sur le contrat (prix, maintenance) ── */
+add_action('wp_ajax_vb_contract_apply_to_project', function() {
+    vb_ajax_guard_contracts();
+    $id = intval($_POST['id'] ?? 0);
+    vb_contract_apply_to_project($id)
+        ? wp_send_json_success(vb_contract_reconciliation($id))
+        : wp_send_json_error('Rapprochement impossible');
+});
+
+/* ── Marquer une échéance comme payée / impayée ── */
+add_action('wp_ajax_vb_contract_toggle_installment', function() {
+    vb_ajax_guard_contracts();
+    global $wpdb;
+
+    $id       = intval($_POST['id'] ?? 0);
+    $index    = intval($_POST['index'] ?? -1);
+    $contract = vb_get_contract($id);
+    if ( ! $contract ) wp_send_json_error('Contrat introuvable');
+
+    $rows = vb_contract_schedule($contract);
+    if ( ! isset($rows[$index]) ) wp_send_json_error('Échéance introuvable');
+
+    $rows[$index]['paid'] = empty($rows[$index]['paid']) ? 1 : 0;
+
+    $wpdb->update(
+        $wpdb->prefix . 'vb_contracts',
+        ['payment_schedule' => vb_contract_encode_schedule($rows)],
+        ['id' => $id]
+    );
+    wp_send_json_success(vb_contract_schedule_totals(vb_get_contract($id)));
+});
+
+/* ── Modèles de contrats : enregistrer ── */
+add_action('wp_ajax_vb_save_contract_templates', function() {
+    vb_ajax_guard_contracts();
+
+    $raw   = $_POST['templates'] ?? [];
+    $clean = [];
+    if ( is_array($raw) ) {
+        foreach ( $raw as $key => $fields ) {
+            if ( ! is_array($fields) ) continue;
+            foreach ( $fields as $f => $v ) {
+                // wp_unslash : sans ça « l'objet du contrat » devient « l\'objet ».
+                $clean[ sanitize_text_field($key) ][ sanitize_text_field($f) ] = wp_unslash( (string) $v );
+            }
+        }
+    }
+    vb_contract_save_templates($clean);
+
+    if ( ! empty($_POST['provider']) && is_array($_POST['provider']) ) {
+        vb_contract_save_provider( array_map('wp_unslash', $_POST['provider']) );
+    }
+    wp_send_json_success(['templates' => vb_contract_templates(), 'provider' => vb_contract_provider()]);
+});
+
+/* ── Modèles de contrats : restaurer les modèles d'usine ── */
+add_action('wp_ajax_vb_reset_contract_templates', function() {
+    vb_ajax_guard_contracts();
+    delete_option('vb_contract_templates');
+    wp_send_json_success(['templates' => vb_contract_templates()]);
+});

@@ -364,3 +364,53 @@
 .vb-crm-field > span { color:#64748b; font-size:13px; }
 .vb-crm-field > strong { text-align:right; }
 .vb-crm-actions-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+
+/* ============================================================
+   CONTRATS — v2.7
+   Aperçu écran du contrat. Le CSS d'impression est injecté par
+   vbPrintContract() dans la fenêtre d'impression : les deux sont
+   volontairement séparés, l'écran n'a pas les mêmes contraintes
+   qu'une feuille A4.
+============================================================ */
+.vb-contract-paper { background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+    padding:38px 44px; max-width:860px; margin:0 auto;
+    box-shadow:0 4px 20px rgba(15,23,42,.06);
+    font-family:Georgia,"Times New Roman",serif; font-size:13.5px; line-height:1.7; color:#1e293b; }
+
+.vb-ct-head { display:flex; justify-content:space-between; align-items:flex-start;
+    padding-bottom:16px; border-bottom:2px solid #6366f1; margin-bottom:24px; }
+.vb-ct-logo { height:46px; object-fit:contain; }
+.vb-ct-logo-block { display:flex; align-items:center; gap:14px; }
+.vb-ct-company { display:flex; flex-direction:column; font-size:11px; color:#64748b; }
+.vb-ct-company strong { color:#1e293b; font-size:14px; }
+.vb-ct-doc-type { font-size:22px; font-weight:700; color:#6366f1; letter-spacing:3px;
+    margin-bottom:8px; text-align:right; }
+.vb-ct-meta table { font-size:11px; }
+.vb-ct-meta td { padding:2px 6px; }
+.vb-ct-meta td:first-child { color:#64748b; }
+
+.vb-ct-title { font-size:19px; text-align:center; margin:0 0 24px;
+    text-transform:uppercase; letter-spacing:1px; }
+
+.vb-ct-parties { display:flex; gap:32px; margin-bottom:26px; font-size:12.5px; line-height:1.6; }
+.vb-ct-parties > div { flex:1; background:#f8fafc; border-left:3px solid #6366f1; padding:12px 16px; }
+.vb-ct-party-label { font-size:9px; font-weight:700; color:#6366f1;
+    letter-spacing:1.5px; margin-bottom:6px; }
+
+.vb-ct-body { text-align:justify; }
+
+.vb-ct-signatures { display:flex; gap:40px; margin-top:40px; }
+.vb-ct-sign-box { flex:1; border:1px solid #cbd5e1; border-radius:6px; padding:14px 16px; }
+.vb-ct-sign-label { font-size:9px; font-weight:700; color:#6366f1; letter-spacing:1.5px; }
+.vb-ct-sign-name { font-size:13px; font-weight:700; margin:4px 0; }
+.vb-ct-sign-hint { font-size:10px; color:#94a3b8; }
+.vb-ct-sign-space { height:74px; }
+
+.vb-ct-foot { margin-top:24px; font-size:10.5px; color:#94a3b8; text-align:center;
+    border-top:1px solid #e2e8f0; padding-top:12px; }
+
+@media (max-width:900px) {
+    .vb-contract-paper { padding:24px 20px; }
+    .vb-ct-head, .vb-ct-parties, .vb-ct-signatures { flex-direction:column; gap:16px; }
+    .vb-ct-doc-type { text-align:left; }
+}

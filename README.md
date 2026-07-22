@@ -18,6 +18,7 @@ des sauvegardes.
 | **Dépenses & Pub** | Budgets Facebook / Instagram / Google / TikTok, outils, freelances |
 | **🔔 Suivi clients** | Abonnements de maintenance mensuelle (MRR / ARR) |
 | **Calendrier** | Livraisons et échéances |
+| **📜 Contrats** | Contrats de création / maintenance, échéanciers, signature, PDF |
 | **Factures & Devis** | Génération des documents |
 | **💾 Sauvegarde** | Export complet (code + données) et restauration en 1 clic |
 
@@ -85,6 +86,30 @@ Puis sur WordPress : **Extensions → Mettre à jour**, ou
 Le dépôt étant public, aucun token n'est nécessaire. S'il repasse en privé,
 renseigner un token GitHub (`Contents: Read-only`) dans la page Sauvegarde.
 
+## Contrats
+
+**YounessWeb → 📜 Contrats.** Trois modèles fournis (création, maintenance,
+création + maintenance), personnalisables depuis le bouton « Modèles ».
+
+Le contrat se crée en un clic depuis un projet : client, prix, avance et suivi
+mensuel sont recopiés. Trois règles gouvernent le module :
+
+1. **Snapshot, pas de jointure.** Les coordonnées et les montants sont *copiés*
+   dans le contrat. Si le client change de téléphone six mois plus tard, le
+   document signé ne bouge pas — sinon ce n'est plus une preuve.
+2. **Un contrat signé est verrouillé.** Il faut le repasser en brouillon pour
+   le corriger, et il ne peut pas être supprimé sans être annulé d'abord.
+3. **La signature est le seul événement qui propage.** Elle pose la date de
+   démarrage du projet et ouvre l'abonnement de maintenance. Elle ne touche
+   jamais à l'argent encaissé : la trésorerie ne se déduit pas d'un document.
+   L'écart contrat/projet est affiché, l'alignement reste un clic explicite.
+
+Le PDF est produit par la fenêtre d'impression du navigateur (comme les
+factures) : aucune dépendance externe, mise en page A4 avec bloc de signatures.
+
+La numérotation `CTR-2026-001` s'appuie sur un compteur qui ne redescend jamais,
+même après suppression : deux contrats ne peuvent pas porter le même numéro.
+
 ## Développement local
 
 Le plugin vit dans `wp-content/plugins/younessWeb-manager/`.
@@ -93,6 +118,20 @@ Tables créées automatiquement à l'activation :
 - `{prefix}_vb_projects` — projets clients
 - `{prefix}_vb_leads` — demandes du formulaire
 - `{prefix}_vb_expenses` — dépenses et publicité
+- `{prefix}_vb_contracts` — contrats clients
+- `{prefix}_vb_invoices` — factures et devis
+
+> Toute nouvelle table doit être déclarée dans `vb_backup_tables()`
+> (`includes/backup.php`), sinon elle est absente des sauvegardes.
+
+### Tests
+
+Aucune dépendance : le harnais `tests/bootstrap.php` charge le vrai code du
+plugin sur une base SQLite en mémoire.
+
+```bash
+for t in tests/*.test.php; do php "$t"; done
+```
 
 ## Licence
 

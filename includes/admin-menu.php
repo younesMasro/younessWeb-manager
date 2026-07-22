@@ -17,6 +17,7 @@ function vb_register_menus() {
     add_submenu_page( 'vendbase', 'Rentabilite pub',  '📈 Rentabilite ROI','manage_options', 'vendbase-roi',      'vb_page_roi'       );
     add_submenu_page( 'vendbase', 'Suivi mensuel',    '🔔 Suivi clients',  'manage_options', 'vendbase-tracking', 'vb_page_tracking'  );
     add_submenu_page( 'vendbase', 'Calendrier',       'Calendrier',        'manage_options', 'vendbase-calendar', 'vb_page_calendar'  );
+    add_submenu_page( 'vendbase', 'Contrats',         vb_contracts_menu_label(), 'manage_options', 'vendbase-contracts', 'vb_page_contracts' );
     add_submenu_page( 'vendbase', 'Factures',         'Factures & Devis',  'manage_options', 'vendbase-invoices', 'vb_page_invoices'  );
     add_submenu_page( 'vendbase', 'Sauvegarde',       vb_backup_menu_label(), 'manage_options', 'vendbase-backup', 'vb_page_backup'   );
 }
@@ -57,7 +58,23 @@ function vb_leads_menu_label() {
     return $label;
 }
 
+/**
+ * Libellé du menu « Contrats », avec une pastille comptant les documents
+ * en attente de signature (brouillon ou envoyé). Un contrat non signé est
+ * un chantier démarré sans filet : il doit se voir.
+ */
+function vb_contracts_menu_label() {
+    $label = '📜 Contrats';
+    $stats = vb_get_contracts_stats();
+    $open  = intval( $stats->draft ?? 0 ) + intval( $stats->sent ?? 0 );
+    if ( $open > 0 ) {
+        $label .= ' <span class="awaiting-mod"><span class="pending-count">' . $open . '</span></span>';
+    }
+    return $label;
+}
+
 function vb_page_dashboard() { require VB_PLUGIN_DIR . 'templates/dashboard.php'; }
+function vb_page_contracts() { require VB_PLUGIN_DIR . 'templates/contracts.php'; }
 function vb_page_leads()     { require VB_PLUGIN_DIR . 'templates/leads.php';      }
 function vb_page_projects()  { require VB_PLUGIN_DIR . 'templates/projects.php';  }
 function vb_page_form()      { require VB_PLUGIN_DIR . 'templates/form.php';       }

@@ -15,13 +15,22 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-/** Tables gérées par le plugin, dans l'ordre de restauration. */
+/**
+ * Tables gérées par le plugin, dans l'ordre de restauration.
+ *
+ * ⚠️ Toute table ajoutée au plugin DOIT être déclarée ici, sinon elle est
+ * silencieusement absente des sauvegardes. C'était le cas des factures
+ * (`vb_invoices`) jusqu'à la v2.7 : la table était créée par le template mais
+ * jamais exportée. Corrigé en même temps que l'arrivée des contrats.
+ */
 function vb_backup_tables() {
     global $wpdb;
     return [
-        'projects' => $wpdb->prefix . 'vb_projects',
-        'leads'    => $wpdb->prefix . 'vb_leads',
-        'expenses' => $wpdb->prefix . 'vb_expenses',
+        'projects'  => $wpdb->prefix . 'vb_projects',
+        'leads'     => $wpdb->prefix . 'vb_leads',
+        'expenses'  => $wpdb->prefix . 'vb_expenses',
+        'contracts' => $wpdb->prefix . 'vb_contracts',
+        'invoices'  => $wpdb->prefix . 'vb_invoices',
     ];
 }
 
@@ -58,6 +67,9 @@ function vb_build_backup_data( $include_credentials = true ) {
             // Modèles de premier message WhatsApp personnalisés.
             'vb_wa_templates'        => get_option( 'vb_wa_templates' ),
             'vb_wa_fallback_lang'    => get_option( 'vb_wa_fallback_lang' ),
+            // Contrats : modèles réécrits et coordonnées du prestataire.
+            'vb_contract_templates'  => get_option( 'vb_contract_templates' ),
+            'vb_contract_provider'   => get_option( 'vb_contract_provider' ),
         ],
     ];
 
@@ -146,6 +158,8 @@ data/backup.json     La sauvegarde complete. C'est CE fichier qu'il faut
 data/projects.csv    Tes projets, ouvrables dans Excel / Google Sheets.
 data/leads.csv       Les demandes recues via le formulaire du site.
 data/expenses.csv    Tes depenses et budgets pub.
+data/contracts.csv   Tes contrats clients (texte, montants, signatures).
+data/invoices.csv    Tes factures et devis.
 plugin/              Le code complet du plugin, pret a etre reinstalle.
 
 
@@ -243,6 +257,8 @@ function vb_restore_backup( $data, $mode = 'merge' ) {
     vb_create_tables();
     vb_create_expenses_table();
     vb_create_leads_table();
+    vb_create_contracts_table();
+    vb_create_invoices_table();
 
     $tables   = vb_backup_tables();
     $imported = [];
@@ -280,7 +296,8 @@ function vb_restore_backup( $data, $mode = 'merge' ) {
 
     // Restaure les clés API pour que le formulaire du site et le Worker
     // WhatsApp refonctionnent, ainsi que les modèles de messages.
-    foreach ( [ 'vb_lead_api_secret', 'vb_whatsapp_api_secret', 'vb_wa_templates', 'vb_wa_fallback_lang' ] as $opt ) {
+    foreach ( [ 'vb_lead_api_secret', 'vb_whatsapp_api_secret', 'vb_wa_templates', 'vb_wa_fallback_lang',
+                'vb_contract_templates', 'vb_contract_provider' ] as $opt ) {
         if ( ! empty( $data['options'][ $opt ] ) ) {
             update_option( $opt, $data['options'][ $opt ], false );
         }
@@ -342,10 +359,12 @@ function vb_handle_import_backup() {
     }
 
     $summary = sprintf(
-        '%d projets, %d demandes, %d dépenses restaurés.',
+        '%d projets, %d demandes, %d dépenses, %d contrats, %d factures restaurés.',
         $result['projects'] ?? 0,
         $result['leads'] ?? 0,
-        $result['expenses'] ?? 0
+        $result['expenses'] ?? 0,
+        $result['contracts'] ?? 0,
+        $result['invoices'] ?? 0
     );
     wp_safe_redirect( add_query_arg( 'vb_done', rawurlencode( $summary ), $redirect ) );
     exit;

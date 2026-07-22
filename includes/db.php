@@ -181,20 +181,23 @@ function vb_save_project( $data, $id = 0 ) {
         'hosting'           => intval($data['hosting'] ?? 0),
         'hosting_provider'  => sanitize_text_field($data['hosting_provider'] ?? ''),
         'hosting_price'     => floatval($data['hosting_price'] ?? 0),
-        'hosting_expiry'    => $data['hosting_expiry'] ?: null,
+        // ?? '' avant ?: — sans le null-coalesce, appeler vb_save_project()
+        // avec un tableau partiel (conversion d'un lead, contrat, import)
+        // émettait un warning « Undefined array key » sur chaque date absente.
+        'hosting_expiry'    => ($data['hosting_expiry'] ?? '') ?: null,
         'domain'            => sanitize_text_field($data['domain'] ?? ''),
         'domain_price'      => floatval($data['domain_price'] ?? 0),
-        'domain_expiry'     => $data['domain_expiry'] ?: null,
+        'domain_expiry'     => ($data['domain_expiry'] ?? '') ?: null,
         'prix'              => floatval($data['prix'] ?? 0),
         'avance'            => floatval($data['avance'] ?? 0),
         'status'            => sanitize_text_field($data['status'] ?? 'in_progress'),
-        'start_date'        => $data['start_date'] ?: null,
-        'delivery_date'     => $data['delivery_date'] ?: null,
+        'start_date'        => ($data['start_date'] ?? '') ?: null,
+        'delivery_date'     => ($data['delivery_date'] ?? '') ?: null,
         'notes'             => sanitize_textarea_field($data['notes'] ?? ''),
         'tags'              => sanitize_text_field($data['tags'] ?? ''),
         'tracking_enabled'      => intval($data['tracking_enabled'] ?? 0),
         'tracking_price'        => floatval($data['tracking_price'] ?? 0),
-        'tracking_start_date'   => $data['tracking_start_date'] ?: null,
+        'tracking_start_date'   => ($data['tracking_start_date'] ?? '') ?: null,
         'tracking_note'         => sanitize_text_field($data['tracking_note'] ?? ''),
     ];
 
@@ -317,6 +320,43 @@ function vb_get_monthly_expenses_chart( $year = '' ) {
          GROUP BY month ORDER BY month ASC",
         intval($year)
     ));
+}
+
+/* ============================================================
+   INVOICES TABLE — extraite de templates/invoices.php en v2.7
+
+   Le schéma vivait dans le template, donc la table n'existait qu'après une
+   visite de la page « Factures & Devis » — et surtout, la sauvegarde ne
+   pouvait pas la déclarer. Schéma identique, aucune migration nécessaire.
+============================================================ */
+function vb_create_invoices_table() {
+    global $wpdb;
+    $charset = $wpdb->get_charset_collate();
+    $table   = $wpdb->prefix . 'vb_invoices';
+
+    $sql = "CREATE TABLE IF NOT EXISTS $table (
+        id           BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        type         VARCHAR(10) NOT NULL DEFAULT 'invoice',
+        number       VARCHAR(50) NOT NULL,
+        project_id   BIGINT(20) UNSIGNED DEFAULT 0,
+        client_name  VARCHAR(200) NOT NULL,
+        client_phone VARCHAR(50)  DEFAULT '',
+        client_email VARCHAR(200) DEFAULT '',
+        client_city  VARCHAR(100) DEFAULT '',
+        items        LONGTEXT     DEFAULT '',
+        subtotal     DECIMAL(10,2) DEFAULT 0,
+        tva          DECIMAL(5,2)  DEFAULT 0,
+        total        DECIMAL(10,2) DEFAULT 0,
+        status       VARCHAR(30)  DEFAULT 'draft',
+        issue_date   DATE         DEFAULT NULL,
+        due_date     DATE         DEFAULT NULL,
+        notes        TEXT         DEFAULT '',
+        created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id)
+    ) $charset;";
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    dbDelta( $sql );
 }
 
 /* ============================================================

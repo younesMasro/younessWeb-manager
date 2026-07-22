@@ -26,6 +26,12 @@ function wp_generate_password( $len = 12 ) { return substr( str_repeat( 'k3yA', 
 function selected( $a, $b, $echo = true ) { return $a == $b ? 'selected' : ''; }
 function esc_html( $v ) { return htmlspecialchars( (string) $v ); }
 function esc_attr( $v ) { return htmlspecialchars( (string) $v ); }
+// function_exists : certains fichiers de test déclarent déjà ces stubs avant
+// de charger le harnais. Une redéclaration serait fatale.
+if ( ! function_exists( 'esc_textarea' ) )   { function esc_textarea( $v ) { return htmlspecialchars( (string) $v ); } }
+if ( ! function_exists( 'wp_unslash' ) )     { function wp_unslash( $v ) { return is_string( $v ) ? stripslashes( $v ) : $v; } }
+if ( ! function_exists( 'wp_json_encode' ) ) { function wp_json_encode( $v, $flags = 0 ) { return json_encode( $v, $flags | JSON_UNESCAPED_UNICODE ); } }
+if ( ! function_exists( 'checked' ) )        { function checked( $a, $b = true, $echo = true ) { return $a == $b ? 'checked' : ''; } }
 function admin_url( $p = '' ) { return 'http://example.test/wp-admin/' . $p; }
 function rest_url( $p = '' ) { return 'http://example.test/wp-json/' . $p; }
 

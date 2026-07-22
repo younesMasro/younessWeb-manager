@@ -4,27 +4,9 @@ if ( ! defined('ABSPATH') ) exit;
 global $wpdb;
 $table_inv = $wpdb->prefix . 'vb_invoices';
 
-// Ensure table exists
-$wpdb->query("CREATE TABLE IF NOT EXISTS $table_inv (
-    id           BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-    type         VARCHAR(10) NOT NULL DEFAULT 'invoice',
-    number       VARCHAR(50) NOT NULL,
-    project_id   BIGINT(20) UNSIGNED DEFAULT 0,
-    client_name  VARCHAR(200) NOT NULL,
-    client_phone VARCHAR(50)  DEFAULT '',
-    client_email VARCHAR(200) DEFAULT '',
-    client_city  VARCHAR(100) DEFAULT '',
-    items        LONGTEXT     DEFAULT '',
-    subtotal     DECIMAL(10,2) DEFAULT 0,
-    tva          DECIMAL(5,2)  DEFAULT 0,
-    total        DECIMAL(10,2) DEFAULT 0,
-    status       VARCHAR(30)  DEFAULT 'draft',
-    issue_date   DATE         DEFAULT NULL,
-    due_date     DATE         DEFAULT NULL,
-    notes        TEXT         DEFAULT '',
-    created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
-) " . $wpdb->get_charset_collate() . ";");
+// Schéma désormais dans includes/db.php, pour que la sauvegarde puisse
+// déclarer la table (cf. vb_backup_tables).
+vb_create_invoices_table();
 
 $action = sanitize_text_field($_GET['action'] ?? 'list');
 $inv_id = intval($_GET['inv_id'] ?? 0);
@@ -98,7 +80,10 @@ if (($action === 'edit' || $action === 'view') && $inv_id) {
 // Load projects for dropdown
 $projects = vb_get_projects(['limit' => 200]);
 
-// Generate next number
+// Generate next number.
+// function_exists : ce fichier est un template, il peut être inclus plus d'une
+// fois dans la même requête — une redéclaration serait une erreur fatale.
+if ( ! function_exists('vb_next_number') ) {
 function vb_next_number($type) {
     global $wpdb;
     $table_inv = $wpdb->prefix . 'vb_invoices';
@@ -108,6 +93,7 @@ function vb_next_number($type) {
         "SELECT COUNT(*) FROM $table_inv WHERE type=%s AND YEAR(created_at)=%d", $type, $year
     )));
     return $prefix . '-' . $year . '-' . str_pad($count + 1, 3, '0', STR_PAD_LEFT);
+}
 }
 
 $status_labels = [
