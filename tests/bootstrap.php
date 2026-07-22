@@ -11,6 +11,9 @@
 error_reporting( E_ALL & ~E_DEPRECATED );
 
 define( 'ABSPATH', __DIR__ . '/stubs/' );
+if ( ! defined( 'ARRAY_A' ) ) define( 'ARRAY_A', 'ARRAY_A' );
+if ( ! defined( 'OBJECT' ) )  define( 'OBJECT', 'OBJECT' );
+if ( ! defined( 'OBJECT_K' ) ) define( 'OBJECT_K', 'OBJECT_K' );
 define( 'VB_PLUGIN_URL', 'http://example.test/wp-content/plugins/younessWeb-manager/' );
 
 /* ---------- fonctions WordPress utilisées par le plugin ---------- */
@@ -35,10 +38,25 @@ if ( ! function_exists( 'checked' ) )        { function checked( $a, $b = true, 
 function admin_url( $p = '' ) { return 'http://example.test/wp-admin/' . $p; }
 function rest_url( $p = '' ) { return 'http://example.test/wp-json/' . $p; }
 
+// Les options sont modélisées par un tableau PHP, ET reflétées dans la table
+// wp_options SQLite : vb_contract_seq_options() interroge la table réelle,
+// alors que le reste du plugin passe par get_option/update_option.
 $GLOBALS['__options'] = [];
+function vb_test_sync_option( $k, $v ) {
+    global $wpdb;
+    if ( ! isset( $wpdb ) || ! ( $wpdb instanceof TestWpdb ) ) return;
+    $wpdb->query( "INSERT INTO wp_options (option_name, option_value) VALUES ("
+        . "'" . addslashes( $k ) . "', '" . addslashes( is_scalar( $v ) ? (string) $v : json_encode( $v ) ) . "') "
+        . "ON CONFLICT(option_name) DO UPDATE SET option_value=excluded.option_value" );
+}
 function get_option( $k, $d = false ) { return $GLOBALS['__options'][ $k ] ?? $d; }
-function add_option( $k, $v ) { if ( ! isset( $GLOBALS['__options'][ $k ] ) ) $GLOBALS['__options'][ $k ] = $v; return true; }
-function update_option( $k, $v ) { $GLOBALS['__options'][ $k ] = $v; return true; }
+function add_option( $k, $v ) { if ( ! isset( $GLOBALS['__options'][ $k ] ) ) { $GLOBALS['__options'][ $k ] = $v; vb_test_sync_option( $k, $v ); } return true; }
+function update_option( $k, $v, $a = false ) { $GLOBALS['__options'][ $k ] = $v; vb_test_sync_option( $k, $v ); return true; }
+// Guard : whatsapp-prefill.test.php déclare aussi delete_option (les
+// déclarations de fonctions au niveau fichier sont hoistées avant le require).
+if ( ! function_exists( 'delete_option' ) ) {
+    function delete_option( $k ) { unset( $GLOBALS['__options'][ $k ] ); return true; }
+}
 
 $GLOBALS['__actions'] = [];
 function add_action( $h, $cb, $p = 10, $a = 1 ) { $GLOBALS['__hooks'][ $h ][] = $cb; return true; }
@@ -80,6 +98,7 @@ function dbDelta( $sql ) {
 
 class TestWpdb {
     public $prefix = 'wp_';
+    public $options = 'wp_options';   // vb_contract_seq_options() interroge cette table
     public $insert_id = 0;
     public $last_error = '';
     private PDO $pdo;
@@ -90,6 +109,8 @@ class TestWpdb {
         $this->pdo->sqliteCreateFunction( 'MONTH', fn( $d ) => (int) date( 'n', strtotime( $d ) ) );
         $this->pdo->sqliteCreateFunction( 'YEAR', fn( $d ) => (int) date( 'Y', strtotime( $d ) ) );
         $this->pdo->sqliteCreateFunction( 'NOW', fn() => date( 'Y-m-d H:i:s' ) );
+        // Table des options, pour tester la sauvegarde des compteurs de contrats.
+        $this->pdo->exec( "CREATE TABLE wp_options ( option_name TEXT PRIMARY KEY, option_value TEXT )" );
     }
 
     public function get_charset_collate() { return ''; }
@@ -170,7 +191,10 @@ class TestWpdb {
     public function get_var( $sql ) { $r = $this->fetch( $sql ); return $r ? array_values( $r[0] )[0] : null; }
     public function get_col( $sql, $i = 0 ) { return array_map( fn( $r ) => array_values( $r )[ $i ], $this->fetch( $sql ) ); }
     public function get_row( $sql ) { $r = $this->fetch( $sql ); return $r ? (object) $r[0] : null; }
-    public function get_results( $sql ) { return array_map( fn( $r ) => (object) $r, $this->fetch( $sql ) ); }
+    public function get_results( $sql, $output = OBJECT ) {
+        $rows = $this->fetch( $sql );
+        return $output === ARRAY_A ? $rows : array_map( fn( $r ) => (object) $r, $rows );
+    }
 
     public function insert( $table, $data ) {
         $cols = array_keys( $data );

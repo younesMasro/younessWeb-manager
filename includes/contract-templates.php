@@ -339,9 +339,14 @@ function vb_contract_save_templates( array $templates ) {
 /**
  * Convertit un montant en toutes lettres françaises, comme l'exige la
  * pratique sur un document contractuel : « deux mille cinq cents dirhams ».
- * Gère les particularités françaises (soixante-dix, quatre-vingts, cent/cents).
+ *
+ * @param int  $n
+ * @param bool $before_multiplier true quand le nombre sert de multiplicateur
+ *        à « mille » ou « million ». C'est ce qui fait tomber le s de
+ *        « quatre-vingts » et de « cents » : on écrit « quatre-vingt mille »
+ *        et « deux cent mille », jamais « quatre-vingts mille ».
  */
-function vb_number_to_words_fr( $n ) {
+function vb_number_to_words_fr( $n, $before_multiplier = false ) {
     $n = (int) $n;
     if ( $n === 0 ) return 'zéro';
     if ( $n < 0 )   return 'moins ' . vb_number_to_words_fr( -$n );
@@ -359,19 +364,25 @@ function vb_number_to_words_fr( $n ) {
 
     if ( $n < 17 ) return $units[ $n ];
 
+    // 17, 18, 19 : composés de « dix ». Sans ce cas, la branche des dizaines
+    // ci-dessous chercherait $tens[1] qui n'existe pas.
+    if ( $n < 20 ) return 'dix-' . $units[ $n - 10 ];
+
     if ( $n < 100 ) {
         $t = intdiv( $n, 10 );
         $u = $n % 10;
 
-        // 70-79 et 90-99 se disent « soixante-dix… » et « quatre-vingt-dix… ».
+        // 70-79 et 90-99 se construisent sur « soixante » et « quatre-vingt »
+        // suivis de 10 à 19.
         if ( $t === 7 || $t === 9 ) {
-            $base = $t === 7 ? 'soixante' : 'quatre-vingt';
-            $rest = vb_number_to_words_fr( 10 + $u );
-            return $base . ( $u === 1 && $t === 7 ? ' et ' : '-' ) . $rest;
+            if ( $t === 7 && $u === 1 ) return 'soixante et onze';
+            return ( $t === 7 ? 'soixante' : 'quatre-vingt' ) . '-' . vb_number_to_words_fr( 10 + $u );
         }
         if ( $t === 8 ) {
-            // « quatre-vingts » prend un s, sauf suivi d'un autre nombre.
-            return $u === 0 ? 'quatre-vingts' : 'quatre-vingt-' . $units[ $u ];
+            // « quatre-vingts » ne prend son s que s'il termine le nombre et
+            // n'est pas multiplicateur.
+            if ( $u === 0 ) return $before_multiplier ? 'quatre-vingt' : 'quatre-vingts';
+            return 'quatre-vingt-' . $units[ $u ];
         }
         if ( $u === 0 ) return $tens[ $t ];
         if ( $u === 1 ) return $tens[ $t ] . ' et un';
@@ -381,8 +392,10 @@ function vb_number_to_words_fr( $n ) {
     if ( $n < 1000 ) {
         $h    = intdiv( $n, 100 );
         $rest = $n % 100;
-        // « cent » prend un s au pluriel, sauf s'il est suivi d'un autre nombre.
-        $prefix = $h === 1 ? 'cent' : $units[ $h ] . ' cent' . ( $rest === 0 ? 's' : '' );
+        // Même règle que quatre-vingts : « cents » ne prend son s que s'il
+        // termine le nombre et n'est pas multiplicateur.
+        $plural = ( $rest === 0 && ! $before_multiplier ) ? 's' : '';
+        $prefix = $h === 1 ? 'cent' : $units[ $h ] . ' cent' . $plural;
         return $rest === 0 ? $prefix : $prefix . ' ' . vb_number_to_words_fr( $rest );
     }
 
@@ -390,13 +403,13 @@ function vb_number_to_words_fr( $n ) {
         $th   = intdiv( $n, 1000 );
         $rest = $n % 1000;
         // « mille » est toujours invariable, et « un mille » ne se dit pas.
-        $prefix = $th === 1 ? 'mille' : vb_number_to_words_fr( $th ) . ' mille';
+        $prefix = $th === 1 ? 'mille' : vb_number_to_words_fr( $th, true ) . ' mille';
         return $rest === 0 ? $prefix : $prefix . ' ' . vb_number_to_words_fr( $rest );
     }
 
     $m    = intdiv( $n, 1000000 );
     $rest = $n % 1000000;
-    $prefix = $m === 1 ? 'un million' : vb_number_to_words_fr( $m ) . ' millions';
+    $prefix = $m === 1 ? 'un million' : vb_number_to_words_fr( $m, true ) . ' millions';
     return $rest === 0 ? $prefix : $prefix . ' ' . vb_number_to_words_fr( $rest );
 }
 

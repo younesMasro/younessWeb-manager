@@ -149,6 +149,26 @@ function vb_next_contract_number( $year = null ) {
 }
 
 /**
+ * Tous les compteurs de numérotation présents en base (clés vb_contract_seq_*).
+ * Utilisé par la sauvegarde : ces options doivent voyager avec les contrats.
+ *
+ * @return array<string,int> clé d'option => rang
+ */
+function vb_contract_seq_options() {
+    global $wpdb;
+    $rows = $wpdb->get_results(
+        "SELECT option_name, option_value FROM {$wpdb->options}
+         WHERE option_name LIKE 'vb_contract_seq_%'",
+        ARRAY_A
+    );
+    $out = [];
+    foreach ( (array) $rows as $r ) {
+        $out[ $r['option_name'] ] = intval( $r['option_value'] );
+    }
+    return $out;
+}
+
+/**
  * Enregistre qu'un numéro a été consommé. Appelé à chaque insertion, y compris
  * quand l'utilisateur a saisi le numéro à la main : c'est ce qui garantit que
  * le compteur ne redescend pas après une suppression.

@@ -73,6 +73,14 @@ function vb_build_backup_data( $include_credentials = true ) {
         ],
     ];
 
+    // Compteurs de numérotation des contrats (un par année, clés dynamiques
+    // vb_contract_seq_2025, _2026…). SANS eux, restaurer sur un site neuf
+    // ferait réutiliser le numéro d'un contrat supprimé avant la sauvegarde :
+    // c'est exactement l'unicité que le compteur est censé garantir.
+    foreach ( vb_contract_seq_options() as $key => $val ) {
+        $data['options'][ $key ] = $val;
+    }
+
     foreach ( vb_backup_tables() as $key => $table ) {
         if ( $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table ) ) !== $table ) {
             $data['tables'][ $key ] = [];
@@ -300,6 +308,18 @@ function vb_restore_backup( $data, $mode = 'merge' ) {
                 'vb_contract_templates', 'vb_contract_provider' ] as $opt ) {
         if ( ! empty( $data['options'][ $opt ] ) ) {
             update_option( $opt, $data['options'][ $opt ], false );
+        }
+    }
+
+    // Compteurs de numérotation des contrats : clés dynamiques, restaurées
+    // séparément. On ne fait que MONTER le compteur (max avec l'existant) :
+    // une restauration en mode « Ajouter » ne doit jamais rabaisser un
+    // compteur déjà plus haut sur le site cible.
+    if ( ! empty( $data['options'] ) && is_array( $data['options'] ) ) {
+        foreach ( $data['options'] as $key => $val ) {
+            if ( strpos( $key, 'vb_contract_seq_' ) !== 0 ) continue;
+            $current = intval( get_option( $key, 0 ) );
+            if ( intval( $val ) > $current ) update_option( $key, intval( $val ), false );
         }
     }
 

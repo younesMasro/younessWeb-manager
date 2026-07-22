@@ -220,18 +220,32 @@ echo "\n\033[1m7. Montant en toutes lettres\033[0m\n";
 
 is_eq( vb_number_to_words_fr( 0 ),    'zéro',                  '0' );
 is_eq( vb_number_to_words_fr( 16 ),   'seize',                 '16' );
+// 17-19 : composés de « dix ». Un bug d'audit les rendait « -sept » et
+// empoisonnait 77-79 / 97-99. Verrouillé ici.
+is_eq( vb_number_to_words_fr( 17 ),   'dix-sept',              '17' );
+is_eq( vb_number_to_words_fr( 18 ),   'dix-huit',              '18' );
+is_eq( vb_number_to_words_fr( 19 ),   'dix-neuf',              '19' );
 is_eq( vb_number_to_words_fr( 21 ),   'vingt et un',           '21 (liaison « et »)' );
 is_eq( vb_number_to_words_fr( 71 ),   'soixante et onze',      '71 (le piège classique)' );
+is_eq( vb_number_to_words_fr( 77 ),   'soixante-dix-sept',     '77 (dépend de 17)' );
+is_eq( vb_number_to_words_fr( 79 ),   'soixante-dix-neuf',     '79' );
 is_eq( vb_number_to_words_fr( 80 ),   'quatre-vingts',         '80 prend un s' );
 is_eq( vb_number_to_words_fr( 81 ),   'quatre-vingt-un',       '81 perd le s' );
 is_eq( vb_number_to_words_fr( 95 ),   'quatre-vingt-quinze',   '95' );
+is_eq( vb_number_to_words_fr( 97 ),   'quatre-vingt-dix-sept', '97 (dépend de 17)' );
 is_eq( vb_number_to_words_fr( 100 ),  'cent',                  '100' );
 is_eq( vb_number_to_words_fr( 200 ),  'deux cents',            '200 prend un s' );
 is_eq( vb_number_to_words_fr( 201 ),  'deux cent un',          '201 perd le s' );
 is_eq( vb_number_to_words_fr( 1000 ), 'mille',                 '1000 (jamais « un mille »)' );
 is_eq( vb_number_to_words_fr( 2500 ), 'deux mille cinq cents', '2500 — le panier moyen' );
 is_eq( vb_number_to_words_fr( 4700 ), 'quatre mille sept cents', '4700 — Cutt Salons' );
+// Multiplicateurs : « cents » et « quatre-vingts » perdent leur s devant
+// « mille » / « million ». Deuxième bug d'audit.
+is_eq( vb_number_to_words_fr( 80000 ),  'quatre-vingt mille', '80 000 — pas de s devant mille' );
+is_eq( vb_number_to_words_fr( 200000 ), 'deux cent mille',    '200 000 — pas de s devant mille' );
 is_eq( vb_number_to_words_fr( 87900 ), 'quatre-vingt-sept mille neuf cents', '87 900 — le CA total' );
+is_eq( vb_number_to_words_fr( 999999 ), 'neuf cent quatre-vingt-dix-neuf mille neuf cent quatre-vingt-dix-neuf', '999 999 — le maximum plausible' );
+is_eq( vb_number_to_words_fr( 1000000 ), 'un million', '1 000 000' );
 
 is_eq( vb_amount_in_words( 2500 ),   'deux mille cinq cents dirhams', 'montant entier' );
 is_eq( vb_amount_in_words( 1500.50 ), 'mille cinq cents dirhams et cinquante centimes', 'montant avec centimes' );
@@ -337,7 +351,37 @@ ok( in_array( $naked, $ids, true ), 'un projet sans contrat est signalé' );
 ok( ! in_array( $pid, $ids, true ), 'un projet déjà couvert n\'est pas signalé' );
 
 
-echo "\n\033[1m11. Non-régression : les modules existants\033[0m\n";
+echo "\n\033[1m11. Numérotation : survie du compteur à une suppression + restauration\033[0m\n";
+
+// Scénario réel qui casse une numérotation naïve : émettre un numéro,
+// le supprimer, puis restaurer sur un site neuf. Le compteur doit empêcher
+// la réutilisation du numéro disparu.
+$y = 2099; // année neuve, isolée des autres tests
+$n1 = vb_next_contract_number( $y );
+is_eq( $n1, 'CTR-2099-001', 'compteur neuf : 001' );
+
+$cid = vb_save_contract( [ 'client_name' => 'Compteur', 'number' => $n1, 'amount_total' => 100 ] );
+is_eq( vb_next_contract_number( $y ), 'CTR-2099-002', 'après émission de 001, le suivant est 002' );
+
+vb_delete_contract( $cid ); // la table 2099 est de nouveau vide
+is_eq( vb_next_contract_number( $y ), 'CTR-2099-002', 'après suppression, 001 n\'est PAS réémis' );
+
+// Le compteur est bien matérialisé en option, donc exportable par la sauvegarde.
+$seq = vb_contract_seq_options();
+ok( isset( $seq['vb_contract_seq_2099'] ) && (int) $seq['vb_contract_seq_2099'] === 1,
+    'le compteur 2099 est présent dans les options sauvegardables' );
+
+// Simule une restauration « site neuf » : on repart d'un compteur à zéro,
+// puis on applique la logique de restauration (ne fait que monter le compteur).
+update_option( 'vb_contract_seq_2099', 0 );
+$backed_up = 1; // ce que contenait la sauvegarde
+if ( $backed_up > intval( get_option( 'vb_contract_seq_2099', 0 ) ) ) {
+    update_option( 'vb_contract_seq_2099', $backed_up );
+}
+is_eq( vb_next_contract_number( $y ), 'CTR-2099-002', 'après restauration du compteur, 001 reste consommé' );
+
+
+echo "\n\033[1m12. Non-régression : les modules existants\033[0m\n";
 
 // Le module contrats ne doit rien avoir cassé dans ce qui existait.
 $before = vb_get_stats();
