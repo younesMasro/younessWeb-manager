@@ -202,12 +202,14 @@ $uncovered = vb_get_projects_without_contract( 12 );
 
 <div class="vb-card" style="margin-top:16px">
     <div class="vb-card-header">
-        <span>Tous les contrats</span>
-        <form method="get" style="display:flex;gap:8px;align-items:center">
+        <span>Tous les contrats <span class="vb-sub">(<?= count($rows) ?>)</span></span>
+        <form method="get" style="display:flex;gap:8px;align-items:center" role="search">
             <input type="hidden" name="page" value="vendbase-contracts">
-            <input type="search" name="s" class="vb-input" placeholder="Client, numéro…"
+            <label class="screen-reader-text" for="vb-ct-search">Rechercher un contrat</label>
+            <input type="search" name="s" id="vb-ct-search" class="vb-input" placeholder="Client, numéro…"
                    value="<?= esc_attr($_GET['s'] ?? '') ?>" style="width:180px">
-            <select name="status" class="vb-select" onchange="this.form.submit()">
+            <label class="screen-reader-text" for="vb-ct-status">Filtrer par statut</label>
+            <select name="status" id="vb-ct-status" class="vb-select" onchange="this.form.submit()">
                 <option value="">Tous les statuts</option>
                 <?php foreach ( $statuses as $k => $s ): ?>
                 <option value="<?= esc_attr($k) ?>" <?= selected($_GET['status'] ?? '', $k, false) ?>><?= $s['icon'] ?> <?= esc_html($s['label']) ?></option>
@@ -216,11 +218,13 @@ $uncovered = vb_get_projects_without_contract( 12 );
         </form>
     </div>
 
+<div class="vb-table-scroll">
 <table class="vb-table vb-table-full">
     <thead>
         <tr>
-            <th>Numéro</th><th>Client</th><th>Modèle</th><th>Montant</th>
-            <th>Échéancier</th><th>Statut</th><th>Émis le</th><th>Actions</th>
+            <th scope="col">Numéro</th><th scope="col">Client</th><th scope="col">Modèle</th>
+            <th scope="col">Montant</th><th scope="col">Échéancier</th><th scope="col">Statut</th>
+            <th scope="col">Émis le</th><th scope="col">Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -260,22 +264,45 @@ $uncovered = vb_get_projects_without_contract( 12 );
         <td><?= vb_contract_badge($c->status) ?></td>
         <td><?= $c->issue_date ? date('d/m/Y', strtotime($c->issue_date)) : '—' ?></td>
         <td class="vb-actions-cell">
-            <a href="<?= admin_url('admin.php?page=vendbase-contracts&action=view&id=' . $c->id) ?>" class="vb-action-btn" title="Voir / Imprimer"><span class="dashicons dashicons-visibility"></span></a>
+            <a href="<?= admin_url('admin.php?page=vendbase-contracts&action=view&id=' . $c->id) ?>"
+               class="vb-action-btn" title="Voir / Imprimer"
+               aria-label="Voir le contrat <?= esc_attr($c->number) ?>"><span class="dashicons dashicons-visibility" aria-hidden="true"></span></a>
             <?php if ( ! vb_contract_is_locked($c) ): ?>
-            <a href="<?= admin_url('admin.php?page=vendbase-contracts&action=edit&id=' . $c->id) ?>" class="vb-action-btn vb-btn-edit" title="Modifier"><span class="dashicons dashicons-edit"></span></a>
+            <a href="<?= admin_url('admin.php?page=vendbase-contracts&action=edit&id=' . $c->id) ?>"
+               class="vb-action-btn vb-btn-edit" title="Modifier"
+               aria-label="Modifier le contrat <?= esc_attr($c->number) ?>"><span class="dashicons dashicons-edit" aria-hidden="true"></span></a>
             <a href="<?= wp_nonce_url(admin_url('admin.php?page=vendbase-contracts&action=delete&id=' . $c->id), 'vb_contract_delete_' . $c->id) ?>"
                class="vb-action-btn vb-btn-delete" title="Supprimer"
-               onclick="return confirm('Supprimer ce contrat ?')"><span class="dashicons dashicons-trash"></span></a>
+               aria-label="Supprimer le contrat <?= esc_attr($c->number) ?>"
+               onclick="return confirm('Supprimer ce contrat ?')"><span class="dashicons dashicons-trash" aria-hidden="true"></span></a>
             <?php else: ?>
-            <span class="vb-action-btn" title="Contrat signé — verrouillé" style="opacity:.4;cursor:not-allowed"><span class="dashicons dashicons-lock"></span></span>
+            <span class="vb-action-btn vb-action-btn-locked" title="Contrat signé — verrouillé"
+                  aria-label="Contrat signé, verrouillé"><span class="dashicons dashicons-lock" aria-hidden="true"></span></span>
             <?php endif; ?>
         </td>
     </tr>
     <?php endforeach; else: ?>
-    <tr><td colspan="8" class="vb-empty">Aucun contrat. Crée le premier depuis un projet →</td></tr>
+    <tr><td colspan="8">
+        <div class="vb-ct-empty">
+            <div class="vb-ct-empty-icon" aria-hidden="true">📜</div>
+            <div class="vb-ct-empty-title">
+                <?= ( $_GET['s'] ?? '' ) || ( $_GET['status'] ?? '' )
+                    ? 'Aucun contrat ne correspond à cette recherche.'
+                    : 'Aucun contrat pour le moment.' ?>
+            </div>
+            <p class="vb-sub">
+                Un chantier démarré sans document signé, c'est un litige sans preuve.
+                Le plus simple est de partir d'un projet existant : tout est pré-rempli.
+            </p>
+            <a href="<?= admin_url('admin.php?page=vendbase-contracts&action=new') ?>" class="vb-btn vb-btn-primary">
+                <span class="dashicons dashicons-plus-alt2" aria-hidden="true"></span> Créer le premier contrat
+            </a>
+        </div>
+    </td></tr>
     <?php endif; ?>
     </tbody>
 </table>
+</div>
 </div>
 
 
@@ -329,7 +356,8 @@ if ( ! $schedule_rows ) $schedule_rows = vb_contract_default_schedule( $f->amoun
                     <?php foreach ( $templates as $k => $t ): ?>
                     <option value="<?= esc_attr($k) ?>" <?= selected($f->template_key, $k, false) ?>
                             data-maintenance="<?= intval($t['maintenance']) ?>"
-                            data-deposit="<?= intval($t['deposit_percent']) ?>">
+                            data-deposit="<?= intval($t['deposit_percent']) ?>"
+                            data-scope="<?= esc_attr($t['scope']) ?>">
                         <?= $t['icon'] ?> <?= esc_html($t['label']) ?>
                     </option>
                     <?php endforeach; ?>
@@ -341,8 +369,12 @@ if ( ! $schedule_rows ) $schedule_rows = vb_contract_default_schedule( $f->amoun
             </div>
         </div>
         <div class="vb-form-group">
-            <label class="vb-label">Titre du contrat</label>
-            <input type="text" name="title" class="vb-input" value="<?= esc_attr($f->title) ?>">
+            <label class="vb-label" for="vb-ct-title">Titre du contrat</label>
+            <input type="text" name="title" id="vb-ct-title" class="vb-input" value="<?= esc_attr($f->title) ?>">
+            <p class="vb-sub" id="vb-ct-title-hint">
+                Se met à jour tout seul selon le modèle et la clause de maintenance.
+                Le modifier à la main fige le titre.
+            </p>
         </div>
         <div class="vb-form-row">
             <div class="vb-form-group">
@@ -379,28 +411,55 @@ if ( ! $schedule_rows ) $schedule_rows = vb_contract_default_schedule( $f->amoun
 
     <div class="vb-card" style="margin-top:16px">
         <div class="vb-card-header"><span>👤 Client (figé dans le contrat)</span></div>
-        <div class="vb-form-group">
-            <label class="vb-label">Nom / Raison sociale *</label>
-            <input type="text" name="client_name" id="vb-ct-name" class="vb-input" value="<?= esc_attr($f->client_name) ?>" required>
+        <p class="vb-sub" style="margin:0 0 10px">
+            Tout champ laissé vide disparaît complètement du contrat — aucune ligne vide sur le document.
+        </p>
+        <div class="vb-form-row">
+            <div class="vb-form-group">
+                <label class="vb-label" for="vb-ct-name">Nom du client *</label>
+                <input type="text" name="client_name" id="vb-ct-name" class="vb-input" value="<?= esc_attr($f->client_name) ?>" required>
+            </div>
+            <div class="vb-form-group">
+                <label class="vb-label" for="vb-ct-company">Société <span class="vb-sub">(facultatif)</span></label>
+                <input type="text" name="client_company" id="vb-ct-company" class="vb-input" value="<?= esc_attr($f->client_company ?? '') ?>">
+            </div>
         </div>
         <div class="vb-form-row">
             <div class="vb-form-group">
-                <label class="vb-label">Téléphone</label>
+                <label class="vb-label" for="vb-ct-phone">Téléphone</label>
                 <input type="tel" name="client_phone" id="vb-ct-phone" class="vb-input" value="<?= esc_attr($f->client_phone) ?>">
             </div>
             <div class="vb-form-group">
-                <label class="vb-label">Email</label>
+                <label class="vb-label" for="vb-ct-email">Email</label>
                 <input type="email" name="client_email" id="vb-ct-email" class="vb-input" value="<?= esc_attr($f->client_email) ?>">
+            </div>
+        </div>
+        <div class="vb-form-group">
+            <label class="vb-label" for="vb-ct-address">Adresse <span class="vb-sub">(facultatif)</span></label>
+            <input type="text" name="client_address" id="vb-ct-address" class="vb-input" value="<?= esc_attr($f->client_address ?? '') ?>">
+        </div>
+        <div class="vb-form-row">
+            <div class="vb-form-group">
+                <label class="vb-label" for="vb-ct-city">Ville</label>
+                <input type="text" name="client_city" id="vb-ct-city" class="vb-input" value="<?= esc_attr($f->client_city) ?>">
+            </div>
+            <div class="vb-form-group">
+                <label class="vb-label" for="vb-ct-country">Pays <span class="vb-sub">(facultatif)</span></label>
+                <input type="text" name="client_country" id="vb-ct-country" class="vb-input" value="<?= esc_attr($f->client_country ?? '') ?>">
             </div>
         </div>
         <div class="vb-form-row">
             <div class="vb-form-group">
-                <label class="vb-label">Ville</label>
-                <input type="text" name="client_city" id="vb-ct-city" class="vb-input" value="<?= esc_attr($f->client_city) ?>">
+                <label class="vb-label" for="vb-ct-cin">CIN / ICE <span class="vb-sub">(facultatif)</span></label>
+                <input type="text" name="client_legal_id" id="vb-ct-cin" class="vb-input" value="<?= esc_attr($f->client_legal_id) ?>">
             </div>
             <div class="vb-form-group">
-                <label class="vb-label">CIN / ICE / RC</label>
-                <input type="text" name="client_legal_id" class="vb-input" value="<?= esc_attr($f->client_legal_id) ?>">
+                <label class="vb-label" for="vb-ct-ice">ICE <span class="vb-sub">(facultatif)</span></label>
+                <input type="text" name="client_ice" id="vb-ct-ice" class="vb-input" value="<?= esc_attr($f->client_ice ?? '') ?>">
+            </div>
+            <div class="vb-form-group">
+                <label class="vb-label" for="vb-ct-rc">RC <span class="vb-sub">(facultatif)</span></label>
+                <input type="text" name="client_rc" id="vb-ct-rc" class="vb-input" value="<?= esc_attr($f->client_rc ?? '') ?>">
             </div>
         </div>
     </div>
@@ -475,7 +534,8 @@ if ( ! $schedule_rows ) $schedule_rows = vb_contract_default_schedule( $f->amoun
         <div style="display:flex;gap:8px;align-items:center;padding:10px 0">
             <button type="button" class="vb-btn vb-btn-secondary vb-btn-sm" onclick="vbCtAddRow()">+ Ligne</button>
             <button type="button" class="vb-btn vb-btn-ghost vb-btn-sm" onclick="vbCtRebuild()">↻ Reconstruire (acompte + solde)</button>
-            <span id="vb-ct-sched-check" class="vb-sub" style="margin-left:auto"></span>
+            <span id="vb-ct-sched-check" class="vb-sub" style="margin-left:auto"
+                  role="status" aria-live="polite"></span>
         </div>
 
         <div class="vb-form-group">
@@ -535,11 +595,14 @@ if ( ! $schedule_rows ) $schedule_rows = vb_contract_default_schedule( $f->amoun
         </div>
     </div>
 
-    <div style="margin-top:20px;display:flex;gap:12px">
+    <div class="vb-form-actions">
         <button type="submit" class="vb-btn vb-btn-primary vb-btn-lg">
-            <span class="dashicons dashicons-saved"></span> Enregistrer
+            <span class="dashicons dashicons-saved" aria-hidden="true"></span> Enregistrer
         </button>
         <a href="<?= admin_url('admin.php?page=vendbase-contracts') ?>" class="vb-btn vb-btn-ghost">← Retour</a>
+        <span class="vb-sub" style="margin-left:auto">
+            <?= $contract ? 'Contrat ' . esc_html($f->number) : 'Nouveau contrat — n° ' . esc_html($f->number) ?>
+        </span>
     </div>
 
 </div><!-- col B -->
@@ -609,6 +672,70 @@ if ( ! $schedule_rows ) $schedule_rows = vb_contract_default_schedule( $f->amoun
         document.querySelectorAll('.vb-ct-sched-amount').forEach(function(el){ el.oninput = check; });
     }
 
+    /* ────────────────────────────────────────────────────────────
+       TITRE AUTOMATIQUE
+
+       C'est la source de l'incohérence historique : on changeait de modèle,
+       le titre restait celui du modèle précédent, et le document s'annonçait
+       « Contrat de création » au-dessus d'articles de maintenance.
+
+       Le titre suit donc le TYPE RÉEL — modèle + clause de maintenance — tant
+       que l'utilisateur ne l'a pas écrit lui-même. Dès qu'il y touche, on ne
+       le réécrit plus jamais : c'est son document.
+    ──────────────────────────────────────────────────────────── */
+    var TITLES = <?= wp_json_encode([
+        'creation'    => $templates['creation']['title'],
+        'maintenance' => $templates['maintenance']['title'],
+        'full'        => $templates['full']['title'],
+    ]) ?>;
+
+    var titleInput = document.getElementById('vb-ct-title');
+    var titleHint  = document.getElementById('vb-ct-title-hint');
+    var maintBox   = document.getElementById('vb-ct-maint');
+    var tplSel     = document.getElementById('vb-ct-template');
+
+    // Un titre déjà saisi qui ne correspond à aucun titre type est un titre
+    // choisi à la main : on le laisse tranquille.
+    var titleLocked = !!(titleInput && titleInput.value &&
+        [TITLES.creation, TITLES.maintenance, TITLES.full].indexOf(titleInput.value) === -1);
+
+    function currentType(){
+        var key = tplSel ? tplSel.value : 'creation';
+        if (key === 'maintenance') return 'maintenance';
+        return (maintBox && maintBox.checked) ? 'full' : 'creation';
+    }
+
+    function syncTitle(){
+        if (!titleInput || titleLocked) return;
+        titleInput.value = TITLES[currentType()] || TITLES.creation;
+        if (titleHint) titleHint.textContent =
+            'Titre déduit du type de contrat. Le modifier à la main le fige.';
+    }
+
+    if (titleInput) titleInput.addEventListener('input', function(){
+        titleLocked = true;
+        if (titleHint) titleHint.textContent = 'Titre personnalisé — il ne sera plus modifié automatiquement.';
+    });
+
+    if (tplSel) tplSel.addEventListener('change', function(){
+        var opt = this.selectedOptions[0];
+
+        // Le modèle porte sa propre clause de maintenance et ses livrables :
+        // changer de modèle sans les suivre produirait un contrat hybride.
+        if (opt && maintBox) maintBox.checked = opt.dataset.maintenance === '1';
+
+        var scope = document.querySelector('textarea[name="scope"]');
+        if (opt && scope && opt.dataset.scope && !scope.dataset.touched) {
+            scope.value = opt.dataset.scope;
+        }
+        syncTitle();
+    });
+
+    var scopeField = document.querySelector('textarea[name="scope"]');
+    if (scopeField) scopeField.addEventListener('input', function(){ this.dataset.touched = '1'; });
+
+    if (maintBox) maintBox.addEventListener('change', syncTitle);
+
     // Choisir un projet recopie client + prix + maintenance.
     var projectSel = document.getElementById('vb-ct-project');
     if (projectSel) projectSel.addEventListener('change', function(){
@@ -623,10 +750,8 @@ if ( ! $schedule_rows ) $schedule_rows = vb_contract_default_schedule( $f->amoun
         set('vb-ct-url',   o.dataset.url);
         set('vb-ct-total', o.dataset.prix);
         set('vb-ct-deposit', o.dataset.avance);
-        if (o.dataset.track === '1') {
-            var m = document.getElementById('vb-ct-maint');
-            if (m) m.checked = true;
-        }
+        if (o.dataset.track === '1' && maintBox) maintBox.checked = true;
+        syncTitle();
         vbCtRebuild();
     });
 
@@ -641,24 +766,37 @@ if ( ! $schedule_rows ) $schedule_rows = vb_contract_default_schedule( $f->amoun
 
 
 <?php elseif ( $action === 'view' ): /* ══════════════ APERÇU / PDF ══════════════ */
-$body   = vb_contract_render( $contract );
 $sched  = vb_contract_schedule_totals( $contract );
 $recon  = vb_contract_reconciliation( $contract );
 $locked = vb_contract_is_locked( $contract );
 ?>
-<div style="margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-    <?php if ( ! $locked ): ?>
-    <a href="<?= admin_url('admin.php?page=vendbase-contracts&action=edit&id=' . $contract->id) ?>" class="vb-btn vb-btn-secondary"><span class="dashicons dashicons-edit"></span> Modifier</a>
-    <a href="<?= wp_nonce_url(admin_url('admin.php?page=vendbase-contracts&action=sign&id=' . $contract->id), 'vb_contract_sign_' . $contract->id) ?>"
-       class="vb-btn vb-btn-primary"
-       onclick="return confirm('Marquer ce contrat comme signé ?\n\nLe projet lié sera mis à jour (date de démarrage, maintenance) et le contrat ne sera plus modifiable.')">
-        <span class="dashicons dashicons-yes"></span> Marquer comme signé
-    </a>
-    <?php endif; ?>
-    <button onclick="vbPrintContract()" class="vb-btn vb-btn-primary"><span class="dashicons dashicons-printer"></span> Imprimer / PDF</button>
-    <a href="<?= admin_url('admin.php?page=vendbase-contracts') ?>" class="vb-btn vb-btn-ghost">← Retour</a>
-    <?= vb_contract_badge($contract->status) ?>
-    <?php if ( $locked ): ?><span class="vb-sub">🔒 Verrouillé — document signé</span><?php endif; ?>
+<div class="vb-doc-bar" role="toolbar" aria-label="Actions sur le contrat">
+    <div class="vb-doc-bar-id">
+        <a href="<?= admin_url('admin.php?page=vendbase-contracts') ?>" class="vb-btn vb-btn-ghost vb-btn-sm" aria-label="Retour à la liste des contrats">←</a>
+        <div>
+            <div class="vb-doc-bar-number"><?= esc_html($contract->number) ?></div>
+            <div class="vb-sub"><?= esc_html($contract->client_name) ?></div>
+        </div>
+        <?= vb_contract_badge($contract->status) ?>
+        <?php if ( $locked ): ?>
+        <span class="vb-badge vb-badge-blue" title="Un document signé ne se modifie plus">🔒 Verrouillé</span>
+        <?php endif; ?>
+    </div>
+    <div class="vb-doc-bar-actions">
+        <?php if ( ! $locked ): ?>
+        <a href="<?= admin_url('admin.php?page=vendbase-contracts&action=edit&id=' . $contract->id) ?>" class="vb-btn vb-btn-secondary">
+            <span class="dashicons dashicons-edit" aria-hidden="true"></span> Modifier
+        </a>
+        <a href="<?= wp_nonce_url(admin_url('admin.php?page=vendbase-contracts&action=sign&id=' . $contract->id), 'vb_contract_sign_' . $contract->id) ?>"
+           class="vb-btn vb-btn-secondary"
+           onclick="return confirm('Marquer ce contrat comme signé ?\n\nLe projet lié sera mis à jour (date de démarrage, maintenance) et le contrat ne sera plus modifiable.')">
+            <span class="dashicons dashicons-yes" aria-hidden="true"></span> Marquer comme signé
+        </a>
+        <?php endif; ?>
+        <button type="button" onclick="vbPrintContract()" class="vb-btn vb-btn-primary">
+            <span class="dashicons dashicons-printer" aria-hidden="true"></span> Imprimer / PDF
+        </button>
+    </div>
 </div>
 
 <?php if ( ! $sched['balanced'] && $sched['lines'] ): ?>
@@ -697,107 +835,177 @@ $locked = vb_contract_is_locked( $contract );
 </div>
 <?php endif; ?>
 
-<div class="vb-contract-paper" id="vb-contract-print">
-    <div class="vb-ct-head">
-        <div class="vb-ct-logo-block">
-            <img src="<?= VB_PLUGIN_URL ?>assets/img/logo.png" class="vb-ct-logo" alt="">
-            <div class="vb-ct-company">
-                <strong><?= esc_html($provider['name']) ?></strong>
-                <span><?= esc_html($provider['phone']) ?></span>
-                <span><?= esc_html($provider['email']) ?></span>
-                <span><?= esc_html($provider['website']) ?></span>
+<?php
+/* Le document. Chaque <section> porte une classe « atome » : c'est l'unité
+   que le paginateur d'impression déplace d'une page à l'autre sans la
+   couper. Voir vbPrintContract() plus bas. */
+$doc_title  = vb_contract_document_title( $contract );
+$doc_place  = $contract->client_city ?: $provider['city'];
+$doc_date   = $contract->issue_date ? date('d/m/Y', strtotime($contract->issue_date)) : date('d/m/Y');
+$summary    = vb_contract_summary_html( $contract );
+$body_html  = vb_contract_body_html( $contract );
+$qr_html    = vb_contract_qr_html( $contract );
+$legal_lines = vb_contract_provider_legal_lines( $provider );
+?>
+<article class="vb-contract-paper vb-ct-doc" id="vb-contract-print"
+         aria-label="Contrat <?= esc_attr($contract->number) ?>">
+
+    <header class="vb-ct-head vb-ct-atom">
+        <div class="vb-ct-brand">
+            <img src="<?= VB_PLUGIN_URL ?>assets/img/logo.png" class="vb-ct-logo" alt="" aria-hidden="true">
+            <div class="vb-ct-brand-text">
+                <div class="vb-ct-brand-name"><?= esc_html($provider['name']) ?></div>
+                <?php if ( $provider['tagline'] ): ?>
+                <div class="vb-ct-brand-tagline"><?= esc_html($provider['tagline']) ?></div>
+                <?php endif; ?>
+                <div class="vb-ct-brand-contact">
+                    <?php
+                    $contact = array_filter([
+                        $provider['website'], $provider['phone'],
+                        $provider['email'],   $provider['city'],
+                    ]);
+                    foreach ( $contact as $i => $line ): ?>
+                        <?php if ($i): ?><span class="vb-ct-dot" aria-hidden="true">·</span><?php endif; ?><span><?= esc_html($line) ?></span>
+                    <?php endforeach; ?>
+                </div>
             </div>
         </div>
         <div class="vb-ct-meta">
-            <div class="vb-ct-doc-type">CONTRAT</div>
-            <table>
-                <tr><td>Numéro</td><td><strong><?= esc_html($contract->number) ?></strong></td></tr>
-                <tr><td>Date</td><td><?= $contract->issue_date ? date('d/m/Y', strtotime($contract->issue_date)) : '—' ?></td></tr>
+            <div class="vb-ct-doc-type">Contrat</div>
+            <table class="vb-ct-meta-table">
+                <tr><th scope="row">N°</th><td><strong><?= esc_html($contract->number) ?></strong></td></tr>
+                <tr><th scope="row">Émis le</th><td><?= esc_html($doc_date) ?></td></tr>
                 <?php if ( $contract->signed_date ): ?>
-                <tr><td>Signé le</td><td><?= date('d/m/Y', strtotime($contract->signed_date)) ?></td></tr>
+                <tr><th scope="row">Signé le</th><td><?= date('d/m/Y', strtotime($contract->signed_date)) ?></td></tr>
                 <?php endif; ?>
             </table>
         </div>
+    </header>
+
+    <div class="vb-ct-titleblock vb-ct-atom">
+        <h1 class="vb-ct-title"><?= esc_html($doc_title) ?></h1>
+        <div class="vb-ct-title-rule" aria-hidden="true"></div>
     </div>
 
-    <h1 class="vb-ct-title"><?= esc_html($contract->title ?: 'Contrat de prestation') ?></h1>
-
-    <div class="vb-ct-parties">
-        <div>
-            <div class="vb-ct-party-label">ENTRE LES SOUSSIGNÉS — LE PRESTATAIRE</div>
-            <strong><?= esc_html($provider['name']) ?></strong><br>
-            <?php if ($provider['legal']): ?>Représenté par <?= esc_html($provider['legal']) ?><br><?php endif; ?>
-            <?php if ($provider['legal_id']): ?>ICE / RC : <?= esc_html($provider['legal_id']) ?><br><?php endif; ?>
-            <?php if ($provider['address']): ?><?= esc_html($provider['address']) ?><br><?php endif; ?>
-            <?= esc_html($provider['city']) ?><br>
-            <?= esc_html($provider['phone']) ?><br>
-            <?= esc_html($provider['email']) ?>
+    <section class="vb-ct-parties vb-ct-atom" aria-label="Parties au contrat">
+        <div class="vb-ct-party">
+            <div class="vb-ct-party-label">Entre les soussignés — le prestataire</div>
+            <?= vb_contract_identity_html( vb_contract_provider_block( $provider ) ) ?>
         </div>
-        <div>
-            <div class="vb-ct-party-label">ET — LE CLIENT</div>
-            <strong><?= esc_html($contract->client_name) ?></strong><br>
-            <?php if ($contract->client_legal_id): ?>CIN / ICE : <?= esc_html($contract->client_legal_id) ?><br><?php endif; ?>
-            <?php if ($contract->client_city): ?><?= esc_html($contract->client_city) ?><br><?php endif; ?>
-            <?php if ($contract->client_phone): ?><?= esc_html($contract->client_phone) ?><br><?php endif; ?>
-            <?php if ($contract->client_email): ?><?= esc_html($contract->client_email) ?><?php endif; ?>
+        <div class="vb-ct-party">
+            <div class="vb-ct-party-label">Et — le client</div>
+            <?= vb_contract_identity_html( vb_contract_client_block( $contract ) ) ?>
         </div>
-    </div>
+    </section>
 
-    <div class="vb-ct-body"><?= nl2br( esc_html( $body ) ) ?></div>
+    <?php if ( $summary ): ?>
+    <?php /* Pas de .vb-ct-atom : les deux tableaux du récapitulatif peuvent
+             se répartir sur deux pages plutôt que de laisser un grand vide. */ ?>
+    <section class="vb-ct-summary" aria-label="Récapitulatif financier">
+        <h2 class="vb-ct-section-title">Récapitulatif financier</h2>
+        <?= $summary ?>
+    </section>
+    <?php endif; ?>
 
-    <div class="vb-ct-signatures">
+    <section class="vb-ct-body" aria-label="Clauses du contrat"><?= $body_html ?></section>
+
+    <?php /* Clôture, signatures et QR forment UN SEUL bloc : la fin d'un
+             contrat ne se coupe pas, et un code de vérification seul sur une
+             page n'a aucun sens. */ ?>
+    <section class="vb-ct-endblock vb-ct-atom">
+        <p class="vb-ct-p vb-ct-closing">
+            Fait à <?= esc_html($doc_place) ?>, le <?= esc_html($doc_date) ?>,
+            en deux exemplaires originaux, un pour chacune des parties.
+        </p>
+
+    <div class="vb-ct-signatures" aria-label="Signatures">
         <div class="vb-ct-sign-box">
-            <div class="vb-ct-sign-label">LE PRESTATAIRE</div>
+            <div class="vb-ct-sign-role">Le Prestataire</div>
             <div class="vb-ct-sign-name"><?= esc_html($provider['legal'] ?: $provider['name']) ?></div>
-            <div class="vb-ct-sign-hint">Lu et approuvé, signature</div>
-            <div class="vb-ct-sign-space"></div>
+            <?php if ( $provider['legal'] && $provider['name'] !== $provider['legal'] ): ?>
+            <div class="vb-ct-sign-org"><?= esc_html($provider['name']) ?></div>
+            <?php endif; ?>
+            <div class="vb-ct-sign-fields">
+                <div class="vb-ct-sign-field"><span class="vb-ct-sign-key">Date</span><span class="vb-ct-sign-rule"></span></div>
+                <div class="vb-ct-sign-field vb-ct-sign-field-tall"><span class="vb-ct-sign-key">Signature</span><span class="vb-ct-sign-rule"></span></div>
+            </div>
+            <div class="vb-ct-sign-hint">Précédée de la mention « Lu et approuvé »</div>
         </div>
         <div class="vb-ct-sign-box">
-            <div class="vb-ct-sign-label">LE CLIENT</div>
+            <div class="vb-ct-sign-role">Le Client</div>
             <div class="vb-ct-sign-name"><?= esc_html($contract->client_name) ?></div>
-            <div class="vb-ct-sign-hint">Lu et approuvé, signature</div>
-            <div class="vb-ct-sign-space"></div>
+            <?php if ( $contract->client_company ): ?>
+            <div class="vb-ct-sign-org"><?= esc_html($contract->client_company) ?></div>
+            <?php endif; ?>
+            <div class="vb-ct-sign-fields">
+                <div class="vb-ct-sign-field"><span class="vb-ct-sign-key">Date</span><span class="vb-ct-sign-rule"></span></div>
+                <div class="vb-ct-sign-field vb-ct-sign-field-tall"><span class="vb-ct-sign-key">Signature</span><span class="vb-ct-sign-rule"></span></div>
+            </div>
+            <div class="vb-ct-sign-hint">Précédée de la mention « Lu et approuvé »</div>
         </div>
-    </div>
+    </div><!-- .vb-ct-signatures -->
 
-    <div class="vb-ct-foot">
-        Fait à <?= esc_html($contract->client_city ?: $provider['city']) ?>,
-        le <?= $contract->issue_date ? date('d/m/Y', strtotime($contract->issue_date)) : date('d/m/Y') ?>,
-        en deux exemplaires originaux.
-        &nbsp;·&nbsp; <?= esc_html($contract->number) ?>
-    </div>
-</div>
+    <?= $qr_html ?>
+    </section><!-- .vb-ct-endblock -->
+
+</article>
+
+<?php
+/* Données du pied de page répété à l'impression (numéro, site, mention). */
+$print_foot = [
+    'number'  => $contract->number,
+    'website' => $provider['website'],
+    'client'  => $contract->client_name,
+    'title'   => $doc_title,
+];
+?>
 
 <script>
+/**
+ * Ouvre le contrat dans une fenêtre d'impression paginée.
+ *
+ * La fenêtre ne recopie AUCUN style en ligne : elle charge la même feuille
+ * que l'aperçu (assets/css/contract.css) et le paginateur
+ * (assets/js/contract-print.js). Ce qu'on valide à l'écran est donc,
+ * littéralement, ce qui sort de l'imprimante.
+ */
 function vbPrintContract() {
-    var content = document.getElementById('vb-contract-print').innerHTML;
+    var source = document.getElementById('vb-contract-print');
+    if (!source) return;
+
     var win = window.open('', '_blank');
-    win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title><?= esc_js('Contrat ' . $contract->number . ' — ' . $contract->client_name) ?></title><style>'
-        + '@page{size:A4;margin:18mm 16mm}'
-        + 'body{font-family:Georgia,"Times New Roman",serif;font-size:11.5px;line-height:1.65;color:#1e293b;max-width:820px;margin:0 auto;padding:20px}'
-        + '.vb-ct-head{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:2px solid #6366f1;margin-bottom:22px}'
-        + '.vb-ct-logo{height:44px;object-fit:contain}'
-        + '.vb-ct-logo-block{display:flex;align-items:center;gap:14px}'
-        + '.vb-ct-company{display:flex;flex-direction:column;font-size:10px;color:#64748b}'
-        + '.vb-ct-company strong{color:#1e293b;font-size:13px}'
-        + '.vb-ct-doc-type{font-size:20px;font-weight:700;color:#6366f1;letter-spacing:3px;margin-bottom:8px;text-align:right}'
-        + '.vb-ct-meta table{font-size:10px}.vb-ct-meta td{padding:2px 6px}.vb-ct-meta td:first-child{color:#64748b}'
-        + '.vb-ct-title{font-size:17px;text-align:center;margin:0 0 22px;text-transform:uppercase;letter-spacing:1px}'
-        + '.vb-ct-parties{display:flex;gap:32px;margin-bottom:24px;font-size:11px;line-height:1.6}'
-        + '.vb-ct-parties>div{flex:1;background:#f8fafc;border-left:3px solid #6366f1;padding:10px 14px}'
-        + '.vb-ct-party-label{font-size:8.5px;font-weight:700;color:#6366f1;letter-spacing:1.5px;margin-bottom:6px}'
-        + '.vb-ct-body{text-align:justify;white-space:normal}'
-        + '.vb-ct-signatures{display:flex;gap:40px;margin-top:36px;page-break-inside:avoid}'
-        + '.vb-ct-sign-box{flex:1;border:1px solid #cbd5e1;border-radius:6px;padding:12px 14px}'
-        + '.vb-ct-sign-label{font-size:8.5px;font-weight:700;color:#6366f1;letter-spacing:1.5px}'
-        + '.vb-ct-sign-name{font-size:12px;font-weight:700;margin:4px 0}'
-        + '.vb-ct-sign-hint{font-size:9px;color:#94a3b8}'
-        + '.vb-ct-sign-space{height:70px}'
-        + '.vb-ct-foot{margin-top:22px;font-size:9.5px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;padding-top:10px}'
-        + '</style></head><body>' + content + '</body></html>');
-    win.document.close();
-    win.focus();
-    setTimeout(function(){ win.print(); }, 500);
+    if (!win) { alert('Autorise les fenêtres surgissantes pour imprimer le contrat.'); return; }
+
+    var doc = win.document;
+    doc.open();
+    doc.write(
+        '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
+      + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+      + '<title><?= esc_js( 'Contrat ' . $contract->number . ' — ' . $contract->client_name ) ?></title>'
+      + '<link rel="stylesheet" href="<?= esc_js( VB_PLUGIN_URL . 'assets/css/contract.css?v=' . VB_VERSION ) ?>">'
+      + '</head><body class="vb-print">'
+      + '<div id="vb-print-source" hidden></div>'
+      + '<div id="vb-print-pages"></div>'
+      + '</body></html>'
+    );
+    doc.close();
+
+    // Le contenu est transplanté, pas réinjecté en HTML : les images gardent
+    // leur URL absolue et le navigateur les a déjà en cache.
+    doc.getElementById('vb-print-source').appendChild( doc.importNode(source, true) );
+
+    // Données du pied de page, lues par contract-print.js.
+    win.VB_PRINT = <?= wp_json_encode([
+        'number'       => $print_foot['number'],
+        'title'        => $print_foot['title'],
+        'client'       => $print_foot['client'],
+        'website'      => $print_foot['website'],
+        'confidential' => 'Confidentiel',
+    ]) ?>;
+
+    var s = doc.createElement('script');
+    s.src = <?= wp_json_encode( VB_PLUGIN_URL . 'assets/js/contract-print.js?v=' . VB_VERSION ) ?>;
+    doc.body.appendChild(s);
 }
 
 jQuery(function($){
@@ -816,14 +1024,91 @@ jQuery(function($){
 
 <?php elseif ( $action === 'templates' ): /* ══════════════ MODÈLES ══════════════ */ ?>
 <div class="vb-card" style="margin-top:16px">
-    <div class="vb-card-header"><span>🏢 Tes coordonnées (partie « PRESTATAIRE »)</span></div>
-    <div style="padding:16px" class="vb-form-row">
-        <?php foreach ( [ 'name'=>'Nom commercial','legal'=>'Représentant légal','legal_id'=>'ICE / RC','address'=>'Adresse','city'=>'Ville','phone'=>'Téléphone','email'=>'Email','website'=>'Site web' ] as $k => $lbl ): ?>
+    <div class="vb-card-header"><span>👤 Ton identité (partie « PRESTATAIRE »)</span></div>
+    <div class="vb-ct-provider-grid">
+        <?php foreach ( [
+            'name'    => ['Nom commercial', ''],
+            'tagline' => ['Signature de marque', 'Affichée sous ton nom dans l\'en-tête.'],
+            'legal'   => ['Nom du représentant', ''],
+            'address' => ['Adresse', ''],
+            'city'    => ['Ville', ''],
+            'phone'   => ['Téléphone', ''],
+            'email'   => ['Email', ''],
+            'website' => ['Site web', ''],
+        ] as $k => $meta ): ?>
         <div class="vb-form-group">
-            <label class="vb-label"><?= esc_html($lbl) ?></label>
-            <input type="text" class="vb-input vb-ct-provider" data-key="<?= esc_attr($k) ?>" value="<?= esc_attr($provider[$k]) ?>">
+            <label class="vb-label" for="vb-prov-<?= esc_attr($k) ?>"><?= esc_html($meta[0]) ?></label>
+            <input type="text" id="vb-prov-<?= esc_attr($k) ?>" class="vb-input vb-ct-provider"
+                   data-key="<?= esc_attr($k) ?>" value="<?= esc_attr($provider[$k]) ?>">
+            <?php if ($meta[1]): ?><p class="vb-sub"><?= esc_html($meta[1]) ?></p><?php endif; ?>
         </div>
         <?php endforeach; ?>
+    </div>
+</div>
+
+<div class="vb-card" style="margin-top:16px">
+    <div class="vb-card-header"><span>⚖️ Mentions légales <span class="vb-sub">— facultatives</span></span></div>
+    <div style="padding:16px 16px 4px">
+        <p class="vb-sub" style="margin-top:0">
+            Tu exerces en <strong>freelance</strong>, pas en société : ces champs restent vides et
+            <strong>aucune mention n'apparaît sur les contrats</strong>. Le jour où tu obtiens un
+            numéro (auto-entrepreneur, ICE, RC, IF), remplis-le ici — il s'affichera
+            automatiquement sur tous les contrats suivants.
+        </p>
+    </div>
+    <div class="vb-ct-provider-grid" style="padding-top:0">
+        <?php foreach ( [
+            'legal_id' => 'ICE / RC (champ historique)',
+            'ice'      => 'ICE',
+            'rc'       => 'RC',
+            'if'       => 'IF (identifiant fiscal)',
+        ] as $k => $lbl ): ?>
+        <div class="vb-form-group">
+            <label class="vb-label" for="vb-prov-<?= esc_attr($k) ?>"><?= esc_html($lbl) ?></label>
+            <input type="text" id="vb-prov-<?= esc_attr($k) ?>" class="vb-input vb-ct-provider"
+                   data-key="<?= esc_attr($k) ?>" value="<?= esc_attr($provider[$k]) ?>"
+                   placeholder="—">
+        </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+
+<?php
+$qr_on   = (bool) get_option( 'vb_contract_qr_enabled', 0 );
+$qr_base = (string) get_option( 'vb_contract_qr_base_url', '' );
+?>
+<div class="vb-card" style="margin-top:16px">
+    <div class="vb-card-header"><span>🔳 Code QR de vérification <span class="vb-sub">— optionnel</span></span></div>
+    <div style="padding:16px">
+        <div class="vb-form-group">
+            <label class="vb-toggle-wrap">
+                <input type="checkbox" id="vb-ct-qr-enabled" value="1" <?= checked($qr_on, true, false) ?>>
+                <span><strong>Ajouter un QR en fin de contrat</strong>
+                    <div class="vb-sub">
+                        Généré sur place, sans service externe : il reste lisible dans dix ans.
+                        Prévu pour la vérification du document, l'espace client et le
+                        téléchargement de l'exemplaire signé.
+                    </div>
+                </span>
+            </label>
+        </div>
+        <div class="vb-form-group">
+            <label class="vb-label" for="vb-ct-qr-base">URL de vérification</label>
+            <input type="url" id="vb-ct-qr-base" class="vb-input" value="<?= esc_attr($qr_base) ?>"
+                   placeholder="https://<?= esc_attr($provider['website']) ?>/contrat">
+            <p class="vb-sub">Le numéro du contrat est ajouté à la fin. Vide = déduit de ton site web.</p>
+        </div>
+        <?php
+        $qr_preview = vb_contract_qr_svg(
+            rtrim( $qr_base ?: 'https://' . $provider['website'] . '/contrat', '/' ) . '/CTR-' . date('Y') . '-001',
+            110
+        );
+        if ( $qr_preview ): ?>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:6px">
+            <div style="line-height:0"><?= $qr_preview ?></div>
+            <span class="vb-sub">Aperçu — contenu d'exemple.</span>
+        </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -858,7 +1143,8 @@ jQuery(function($){
         </p>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
         <?php foreach ( vb_contract_placeholder_help() as $ph ): ?>
-            <code class="vb-ct-ph" style="cursor:pointer;background:#f1f5f9;padding:3px 8px;border-radius:4px;font-size:11px"><?= esc_html($ph) ?></code>
+            <code class="vb-ct-ph" tabindex="0" role="button"
+                  title="Cliquer pour copier"><?= esc_html($ph) ?></code>
         <?php endforeach; ?>
         </div>
     </div>
@@ -872,10 +1158,13 @@ jQuery(function($){
 
 <script>
 jQuery(function($){
-    $('.vb-ct-ph').on('click', function(){
+    // Clic OU touche Entrée / Espace : un marqueur reste atteignable au clavier.
+    $('.vb-ct-ph').on('click keydown', function(e){
+        if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
         navigator.clipboard && navigator.clipboard.writeText($(this).text());
         $(this).css('background', '#d1fae5');
-        setTimeout(function(el){ $(el).css('background', '#f1f5f9'); }, 600, this);
+        setTimeout(function(el){ $(el).css('background', ''); }, 600, this);
     });
 
     $('#vb-ct-save-tpl').on('click', function(){
@@ -886,6 +1175,9 @@ jQuery(function($){
             data.templates[k][f] = $(this).val();
         });
         $('.vb-ct-provider').each(function(){ data.provider[$(this).data('key')] = $(this).val(); });
+
+        data.qr_enabled  = $('#vb-ct-qr-enabled').is(':checked') ? 1 : 0;
+        data.qr_base_url = $('#vb-ct-qr-base').val() || '';
 
         $.post(VB.ajax, data, function(r){
             $b.prop('disabled', false);

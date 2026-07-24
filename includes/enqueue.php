@@ -6,6 +6,11 @@ add_action('admin_enqueue_scripts', function($hook) {
 
     wp_enqueue_style('vb-main',   VB_PLUGIN_URL . 'assets/css/main.css',  [], VB_VERSION);
 
+    /* Typographie du contrat : la MÊME feuille sert à l'aperçu écran et à la
+       fenêtre d'impression. C'est ce qui garantit que le document imprimé est
+       exactement celui qu'on a validé à l'écran. */
+    wp_enqueue_style('vb-contract', VB_PLUGIN_URL . 'assets/css/contract.css', ['vb-main'], VB_VERSION);
+
     wp_enqueue_script('chart-js', 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js', [], null, true);
     wp_enqueue_script('vb-main',  VB_PLUGIN_URL . 'assets/js/main.js',    ['jquery', 'chart-js'], VB_VERSION, true);
 

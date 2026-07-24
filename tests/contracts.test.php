@@ -13,6 +13,8 @@
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/../includes/contracts.php';
 require_once __DIR__ . '/../includes/contract-templates.php';
+require_once __DIR__ . '/../includes/contract-qr.php';
+require_once __DIR__ . '/../includes/contract-render.php';
 
 vb_create_tables();
 vb_create_contracts_table();
@@ -271,7 +273,9 @@ ok( strpos( $out, 'ARTICLE 1' ) !== false, 'les articles sont présents' );
 
 // Blocs conditionnels : le point le plus facile à rater, et le plus visible
 // sur un document qui part chez un client.
-ok( strpos( $out, 'ARTICLE 12' ) === false, 'sans maintenance, l\'article maintenance disparaît' );
+// On teste le CONTENU de la clause, pas son numéro : les articles sont
+// renumérotés pour ne jamais sauter de numéro (voir section 13).
+ok( strpos( $out, 'MAINTENANCE ET SUIVI' ) === false, 'sans maintenance, l\'article maintenance disparaît' );
 ok( strpos( $out, 'pénalité' ) === false,   'sans pénalité, la clause disparaît' );
 ok( strpos( $out, 'DISPOSITIONS PARTICULIÈRES' ) === false, 'sans clause libre, l\'article disparaît' );
 
@@ -293,7 +297,7 @@ ok( strpos( $out2, '{{' ) === false,                'toujours aucun marqueur ré
 // Maintenance cochée mais prix à 0 : la clause serait vide de sens.
 $id3  = vb_save_contract( [ 'client_name' => 'Maint 0', 'amount_total' => 1000, 'maintenance_enabled' => 1, 'maintenance_price' => 0 ] );
 $out3 = vb_contract_render( vb_get_contract( $id3 ) );
-ok( strpos( $out3, 'ARTICLE 12' ) === false, 'maintenance à 0 MAD : la clause reste masquée' );
+ok( strpos( $out3, 'MAINTENANCE ET SUIVI' ) === false, 'maintenance à 0 MAD : la clause reste masquée' );
 
 // Cession des droits : deux textes opposés, jamais les deux.
 $ceded = vb_contract_render( (object) [ 'template_key' => 'creation', 'ip_transfer' => 1, 'amount_total' => 100, 'client_name' => 'X' ] );
@@ -400,5 +404,251 @@ ok( is_numeric( $pid_conv ) && $pid_conv > 0, 'la conversion lead -> projet fonc
 // La sauvegarde doit maintenant connaître les contrats ET les factures.
 require_once __DIR__ . '/../includes/db.php';
 ok( function_exists( 'vb_create_invoices_table' ), 'le schéma des factures est sorti du template' );
+
+
+echo "\n\033[1m13. Titre dynamique — l'incohérence titre / articles\033[0m\n";
+
+// Le bug d'origine : un contrat de maintenance annoncé « Contrat de création
+// de site web ». Le titre doit suivre le TYPE RÉEL du document.
+is_eq( vb_contract_type_key( 'creation',    false ), 'creation',    'modèle création sans maintenance -> création' );
+is_eq( vb_contract_type_key( 'creation',    true  ), 'full',        'modèle création + maintenance -> mixte' );
+is_eq( vb_contract_type_key( 'maintenance', true  ), 'maintenance', 'modèle maintenance -> maintenance' );
+is_eq( vb_contract_type_key( 'maintenance', false ), 'maintenance', 'maintenance seule reste maintenance' );
+is_eq( vb_contract_type_key( 'full',        true  ), 'full',        'modèle mixte -> mixte' );
+is_eq( vb_contract_type_key( 'inconnu',     null  ), 'creation',    'modèle inconnu retombe sur création' );
+
+is_eq( vb_contract_title_for( 'creation',    false ), 'Contrat de création de site web',
+    'titre du contrat de création' );
+is_eq( vb_contract_title_for( 'maintenance', true  ), 'Contrat de maintenance et suivi technique',
+    'titre du contrat de maintenance' );
+is_eq( vb_contract_title_for( 'full',        true  ), 'Contrat de création et de maintenance de site web',
+    'titre du contrat mixte' );
+is_eq( vb_contract_title_for( 'creation',    true  ), 'Contrat de création et de maintenance de site web',
+    'création + maintenance s\'annonce comme un contrat mixte' );
+
+// À l'enregistrement, un titre vide est déduit — un titre saisi ne bouge pas.
+$id = vb_save_contract( [ 'client_name' => 'Titre auto', 'template_key' => 'maintenance',
+    'maintenance_enabled' => 1, 'maintenance_price' => 300 ] );
+is_eq( vb_get_contract( $id )->title, 'Contrat de maintenance et suivi technique', 'titre déduit à l\'enregistrement' );
+
+$id = vb_save_contract( [ 'client_name' => 'Titre choisi', 'template_key' => 'maintenance',
+    'title' => 'Convention de partenariat' ] );
+is_eq( vb_get_contract( $id )->title, 'Convention de partenariat', 'un titre saisi n\'est jamais réécrit' );
+
+// Le titre SNAPSHOTÉ fait foi à l'affichage : un contrat déjà rédigé ne
+// change pas d'en-tête parce qu'on a amélioré le code.
+is_eq( vb_contract_document_title( (object) [ 'title' => 'Ancien titre', 'template_key' => 'full' ] ),
+    'Ancien titre', 'le titre enregistré prime sur le titre déduit' );
+is_eq( vb_contract_document_title( (object) [ 'title' => '', 'template_key' => 'maintenance' ] ),
+    'Contrat de maintenance et suivi technique', 'sans titre enregistré, on déduit' );
+
+// Article 1 doit parler du même contrat que le titre.
+$mixte = vb_contract_render( (object) [ 'template_key' => 'full', 'client_name' => 'X', 'amount_total' => 1000,
+    'maintenance_enabled' => 1, 'maintenance_price' => 300 ] );
+ok( strpos( $mixte, 'ARTICLE 1 — OBJET' ) !== false, 'article 1 présent sur un contrat mixte' );
+ok( strpos( $mixte, 'la maintenance et le suivi technique du site' ) !== false,
+    'article 1 annonce la maintenance sur un contrat mixte' );
+
+$simple = vb_contract_render( (object) [ 'template_key' => 'creation', 'client_name' => 'X', 'amount_total' => 1000 ] );
+ok( strpos( $simple, 'Il couvre' ) === false, 'article 1 ne parle pas de maintenance sans clause' );
+
+
+echo "\n\033[1m14. Numérotation des articles — plus aucun trou\033[0m\n";
+
+// Sans maintenance, le modèle sautait de l'article 11 à l'article 13.
+$numbers = [];
+preg_match_all( '/^ARTICLE (\d+)/m', $simple, $m );
+$numbers = array_map( 'intval', $m[1] );
+is_eq( $numbers, range( 1, count( $numbers ) ), 'les articles se suivent sans trou (sans maintenance)' );
+
+preg_match_all( '/^ARTICLE (\d+)/m', $mixte, $m2 );
+is_eq( array_map( 'intval', $m2[1] ), range( 1, count( $m2[1] ) ), 'les articles se suivent sans trou (avec maintenance)' );
+
+// Un contrat SIGNÉ garde sa numérotation d'origine : le client détient un
+// exemplaire papier qui renvoie à des numéros précis.
+$signed_body = vb_contract_render( (object) [
+    'template_key' => 'creation', 'client_name' => 'X', 'amount_total' => 1000, 'status' => 'signed',
+] );
+ok( strpos( $signed_body, 'ARTICLE 13' ) !== false, 'un contrat signé conserve sa numérotation d\'origine' );
+
+
+echo "\n\033[1m15. Mentions légales du prestataire — un freelance n'est pas une société\033[0m\n";
+
+update_option( 'vb_contract_provider', [] );
+is_eq( vb_contract_provider_legal_lines(), [], 'sans numéro saisi, aucune mention légale' );
+
+$block = vb_contract_provider_block();
+$rendered_block = vb_contract_identity_html( $block );
+ok( strpos( $rendered_block, 'ICE' ) === false, 'aucun libellé ICE sur le document d\'un freelance' );
+ok( strpos( $rendered_block, 'RC' )  === false, 'aucun libellé RC sur le document d\'un freelance' );
+
+// Le jour où le statut arrive, il suffit de remplir le champ.
+vb_contract_save_provider( [ 'ice' => '00251478000073' ] );
+is_eq( vb_contract_provider_legal_lines(), [ 'ICE' => '00251478000073' ], 'un ICE saisi apparaît, seul' );
+ok( strpos( vb_contract_identity_html( vb_contract_provider_block() ), '00251478000073' ) !== false,
+    'l\'ICE saisi est bien rendu' );
+vb_contract_save_provider( [ 'ice' => '' ] );
+
+
+echo "\n\033[1m16. Bloc client — les champs vides disparaissent\033[0m\n";
+
+$full_client = (object) [
+    'client_name' => 'Cutt Salons', 'client_company' => 'Cutt SARL',
+    'client_address' => '12 rue des Écoles', 'client_city' => 'Casablanca',
+    'client_country' => 'Maroc', 'client_phone' => '0708-432216',
+    'client_email' => 'contact@cuttsalons.com', 'client_ice' => '001234567',
+    'client_rc' => 'RC-9087', 'client_legal_id' => '',
+];
+$lines  = vb_contract_client_block( $full_client );
+$values = array_column( $lines, 'value' );
+
+ok( in_array( 'Cutt Salons', $values, true ),        'le nom du client est rendu' );
+ok( in_array( 'Cutt SARL', $values, true ),          'la société est rendue' );
+ok( in_array( '12 rue des Écoles', $values, true ),  'l\'adresse est rendue' );
+ok( in_array( 'Casablanca, Maroc', $values, true ),  'ville et pays tiennent sur une ligne' );
+ok( in_array( '001234567', $values, true ),          'l\'ICE client est rendu' );
+ok( in_array( 'RC-9087', $values, true ),            'le RC client est rendu' );
+
+// Aucun champ vide ne doit produire de ligne.
+foreach ( $lines as $l ) {
+    if ( trim( $l['value'] ) === '' ) { ok( false, 'une ligne vide s\'est glissée dans le bloc client' ); break; }
+}
+ok( true, 'aucune ligne vide dans le bloc client' );
+
+$minimal = vb_contract_client_block( (object) [ 'client_name' => 'Client nu' ] );
+is_eq( count( $minimal ), 1, 'un client sans coordonnées ne produit qu\'une ligne' );
+is_eq( strpos( vb_contract_identity_html( $minimal ), '—' ), false, 'aucun tiret de remplissage' );
+
+
+echo "\n\033[1m17. Récapitulatif financier\033[0m\n";
+
+$crea = (object) [ 'template_key' => 'creation', 'client_name' => 'X', 'site_type' => 'Vitrine',
+    'amount_total' => 4700, 'deposit_amount' => 1500,
+    'payment_schedule' => vb_contract_encode_schedule( vb_contract_default_schedule( 4700, 1500 ) ) ];
+
+$sections = vb_contract_summary_sections( $crea );
+is_eq( count( $sections ), 1, 'contrat de création : une seule section' );
+is_eq( $sections[0]['total']['value'], '4 700,00 MAD', 'le total de la prestation est juste' );
+$labels = array_column( $sections[0]['rows'], 'label' );
+ok( in_array( 'Acompte à la signature', $labels, true ), 'l\'acompte figure au récapitulatif' );
+ok( in_array( 'Solde restant dû', $labels, true ),       'le solde figure au récapitulatif' );
+
+$maint = (object) [ 'template_key' => 'maintenance', 'client_name' => 'X', 'amount_total' => 0,
+    'maintenance_enabled' => 1, 'maintenance_price' => 400, 'maintenance_months' => 12,
+    'maintenance_start' => '2026-09-01' ];
+$sections = vb_contract_summary_sections( $maint );
+is_eq( count( $sections ), 1, 'contrat de maintenance : une seule section' );
+is_eq( $sections[0]['total']['value'], '4 800,00 MAD', 'total maintenance = mensuel × durée' );
+ok( strpos( vb_contract_summary_html( $maint ), 'Solde restant dû' ) === false,
+    'un contrat de maintenance n\'affiche pas de solde de livraison' );
+
+$both = (object) [ 'template_key' => 'full', 'client_name' => 'X', 'site_type' => 'E-commerce',
+    'amount_total' => 8000, 'deposit_amount' => 4000,
+    'maintenance_enabled' => 1, 'maintenance_price' => 500, 'maintenance_months' => 12 ];
+is_eq( count( vb_contract_summary_sections( $both ) ), 2, 'contrat mixte : création + abonnement' );
+
+is_eq( vb_contract_summary_html( (object) [ 'client_name' => 'X', 'amount_total' => 0 ] ), '',
+    'sans montant, aucun récapitulatif' );
+
+
+echo "\n\033[1m18. Échéancier — tableau, statuts et solde courant\033[0m\n";
+
+$sched_contract = (object) [ 'client_name' => 'X', 'amount_total' => 4700,
+    'payment_schedule' => vb_contract_encode_schedule( [
+        [ 'label' => 'Acompte', 'amount' => 1500, 'due' => 'À la signature', 'paid' => 1 ],
+        [ 'label' => 'Solde',   'amount' => 3200, 'due' => 'À la livraison', 'paid' => 0 ],
+    ] ) ];
+
+$rows = vb_contract_schedule_view_rows( $sched_contract );
+is_eq( count( $rows ), 2,           'deux échéances' );
+is_eq( $rows[0]['rank'], 1,         'les échéances sont numérotées' );
+is_eq( $rows[0]['balance'], 3200.0, 'solde restant après la première échéance' );
+is_eq( $rows[1]['balance'], 0.0,    'solde nul après la dernière échéance' );
+ok( $rows[0]['paid'],               'l\'échéance réglée est marquée' );
+
+$html = vb_contract_schedule_html( $sched_contract );
+ok( strpos( $html, '<table' ) !== false,   'l\'échéancier est un vrai tableau' );
+ok( strpos( $html, 'Réglée' ) !== false,   'le statut réglé apparaît' );
+ok( strpos( $html, 'À échoir' ) !== false, 'le statut à échoir apparaît' );
+ok( strpos( $html, '<tfoot' ) !== false,   'le tableau porte une ligne de totaux' );
+
+ok( strpos( vb_contract_schedule_html( (object) [ 'client_name' => 'X', 'amount_total' => 100 ] ), 'en totalité' ) !== false,
+    'sans échéancier, une phrase de repli' );
+
+
+echo "\n\033[1m19. Corps du contrat en HTML\033[0m\n";
+
+$pid  = make_project( [ 'client_name' => 'HTML SARL', 'prix' => 2500, 'avance' => 1250, 'tracking_enabled' => 0 ] );
+$id   = vb_save_contract( vb_contract_prefill_from_project( $pid, 'creation' ) );
+$c    = vb_get_contract( $id );
+$html = vb_contract_body_html( $c );
+
+ok( strpos( $html, '{{' ) === false,                    'aucun marqueur résiduel dans le HTML' );
+ok( strpos( $html, "\x02" ) === false,                  'aucun marqueur interne ne fuit' );
+ok( strpos( $html, '<h2 class="vb-ct-article"' ) !== false, 'les articles sont de vrais titres' );
+ok( strpos( $html, 'vb-ct-check' ) !== false,           'les livrables deviennent une liste à cocher' );
+ok( strpos( $html, 'vb-ct-table-schedule' ) !== false,  'l\'échéancier devient un tableau' );
+ok( strpos( $html, '<ul class="vb-ct-ul">' ) !== false, 'les énumérations deviennent des listes' );
+
+// Le HTML doit rester du HTML valide : autant de balises ouvertes que fermées.
+is_eq( substr_count( $html, '<p ' ), substr_count( $html, '</p>' ), 'les paragraphes sont refermés' );
+is_eq( substr_count( $html, '<ul' ), substr_count( $html, '</ul>' ), 'les listes sont refermées' );
+is_eq( substr_count( $html, '<table' ), substr_count( $html, '</table>' ), 'les tableaux sont refermés' );
+
+// Échappement : un client mal intentionné (ou un copier-coller) ne doit
+// jamais pouvoir injecter de HTML dans un document.
+$xss = vb_save_contract( [ 'client_name' => 'X', 'amount_total' => 100,
+    'custom_clauses' => '<script>alert(1)</script>' ] );
+$xss_html = vb_contract_body_html( vb_get_contract( $xss ) );
+ok( strpos( $xss_html, '<script>' ) === false, 'le HTML injecté est échappé' );
+
+// La liste à cocher échappe elle aussi ce qu'on lui donne : c'est le dernier
+// endroit par lequel du balisage pourrait entrer dans le document.
+$check = vb_contract_checklist_html( [ '<b>gras</b>' ] );
+ok( strpos( $check, '<b>' ) === false && strpos( $check, '&lt;b&gt;' ) !== false,
+    'les livrables sont échappés eux aussi' );
+
+// Les retours à la ligne d'édition ne doivent pas devenir des retours
+// typographiques : un paragraphe se recompose.
+ok( strpos( $html, 'pour le compte du CLIENT' ) !== false,
+    'les lignes d\'un même paragraphe sont refusionnées' );
+
+
+echo "\n\033[1m20. Code QR — optionnel, et éteint par défaut\033[0m\n";
+
+delete_option( 'vb_contract_qr_enabled' );
+is_eq( vb_contract_qr_enabled(), false,                'le QR est désactivé par défaut' );
+is_eq( vb_contract_qr_html( $c ), '',                  'aucun QR tant que l\'option est éteinte' );
+
+update_option( 'vb_contract_qr_enabled', 1 );
+$qr = vb_contract_qr_html( $c );
+ok( strpos( $qr, '<svg' ) !== false,                   'le QR est un SVG (net à l\'impression)' );
+ok( strpos( $qr, 'http' ) === false || strpos( $qr, 'younessweb' ) !== false, 'le QR pointe vers le site du prestataire' );
+ok( strpos( $qr, $c->number ) !== false,               'le QR contient le numéro du contrat' );
+update_option( 'vb_contract_qr_enabled', 0 );
+
+// Aucun appel réseau, aucune dépendance : le SVG doit être autoportant.
+$svg = vb_contract_qr_svg( 'https://younessweb.me/contrat/CTR-2026-001' );
+ok( strpos( $svg, 'http://www.w3.org/2000/svg' ) !== false, 'SVG bien formé' );
+ok( strpos( $svg, '<image' ) === false && strpos( $svg, 'xlink' ) === false, 'aucune ressource externe dans le SVG' );
+is_eq( vb_contract_qr_svg( str_repeat( 'x', 500 ) ), '', 'un contenu trop long ne produit jamais un QR faux' );
+is_eq( vb_contract_qr_svg( '' ), '', 'un contenu vide ne produit pas de QR' );
+
+
+echo "\n\033[1m21. Compatibilité ascendante\033[0m\n";
+
+// Un contrat écrit par une version antérieure n'a aucune des nouvelles
+// colonnes. Tout doit continuer de se rendre, sans avertissement.
+$legacy = (object) [
+    'id' => 999, 'number' => 'CTR-2025-007', 'template_key' => 'creation',
+    'title' => 'Contrat de création de site web', 'client_name' => 'Ancien client',
+    'client_phone' => '0600000000', 'client_city' => 'Rabat', 'client_legal_id' => '',
+    'amount_total' => 3000, 'deposit_amount' => 1500, 'status' => 'signed',
+    'scope' => "Maquette\nIntégration", 'payment_schedule' => null,
+];
+ok( vb_contract_body_html( $legacy ) !== '',            'un contrat d\'avant la migration se rend encore' );
+ok( count( vb_contract_client_block( $legacy ) ) >= 3,  'son bloc client reste complet' );
+is_eq( vb_contract_document_title( $legacy ), 'Contrat de création de site web', 'son titre est préservé tel quel' );
+ok( vb_contract_summary_html( $legacy ) !== '',         'son récapitulatif financier se calcule' );
 
 summary();

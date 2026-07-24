@@ -380,6 +380,16 @@ add_action('wp_ajax_vb_save_contract_templates', function() {
     if ( ! empty($_POST['provider']) && is_array($_POST['provider']) ) {
         vb_contract_save_provider( array_map('wp_unslash', $_POST['provider']) );
     }
+
+    // Options du QR de vérification. Envoyées à chaque enregistrement :
+    // la case décochée doit pouvoir désactiver la fonctionnalité.
+    if ( isset($_POST['qr_enabled']) ) {
+        update_option('vb_contract_qr_enabled', ! empty($_POST['qr_enabled']) && $_POST['qr_enabled'] !== '0' ? 1 : 0, false);
+    }
+    if ( isset($_POST['qr_base_url']) ) {
+        update_option('vb_contract_qr_base_url', esc_url_raw( wp_unslash($_POST['qr_base_url']) ), false);
+    }
+
     wp_send_json_success(['templates' => vb_contract_templates(), 'provider' => vb_contract_provider()]);
 });
 

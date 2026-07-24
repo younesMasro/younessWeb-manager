@@ -61,6 +61,9 @@ if ( ! function_exists( 'delete_option' ) ) {
 $GLOBALS['__actions'] = [];
 function add_action( $h, $cb, $p = 10, $a = 1 ) { $GLOBALS['__hooks'][ $h ][] = $cb; return true; }
 function do_action( $h, ...$args ) { $GLOBALS['__actions'][] = [ 'hook' => $h, 'args' => $args ]; }
+// Aucun filtre n'est enregistré en test : apply_filters rend la valeur telle
+// quelle, ce qui est exactement le comportement de WordPress sans abonné.
+function apply_filters( $h, $value, ...$args ) { return $value; }
 function fired_actions( $hook ) {
     return array_values( array_filter( $GLOBALS['__actions'], fn( $a ) => $a['hook'] === $hook ) );
 }

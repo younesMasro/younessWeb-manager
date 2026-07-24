@@ -104,11 +104,45 @@ mensuel sont recopiés. Trois règles gouvernent le module :
    jamais à l'argent encaissé : la trésorerie ne se déduit pas d'un document.
    L'écart contrat/projet est affiché, l'alignement reste un clic explicite.
 
-Le PDF est produit par la fenêtre d'impression du navigateur (comme les
-factures) : aucune dépendance externe, mise en page A4 avec bloc de signatures.
-
 La numérotation `CTR-2026-001` s'appuie sur un compteur qui ne redescend jamais,
 même après suppression : deux contrats ne peuvent pas porter le même numéro.
+
+### Le document
+
+Le titre suit le **type réel** du contrat — modèle choisi *plus* clause de
+maintenance. Un modèle « création » dont la maintenance est active s'annonce
+comme un contrat mixte, et son article 1 le dit. Un titre saisi à la main n'est
+jamais réécrit, et le titre enregistré dans un contrat existant fait toujours foi.
+
+Le prestataire est un **freelance**, pas une société : les champs ICE, RC et IF
+restent vides et **aucune mention légale n'apparaît** tant qu'un numéro n'a pas
+été saisi (page « Modèles »). Même règle pour le client : tout champ vide fait
+disparaître sa ligne, jamais de libellé suivi d'un tiret.
+
+Le corps du contrat reste du **texte** dans les modèles ; `contract-render.php`
+n'ajoute qu'une couche de mise en forme (titres, listes, tableaux). Un modèle
+personnalisé continue donc de fonctionner tel quel.
+
+### PDF
+
+Aucune bibliothèque, aucun appel réseau. La fenêtre d'impression charge la
+**même feuille de style que l'aperçu** (`assets/css/contract.css`) — ce qu'on
+valide à l'écran est ce qui sort de l'imprimante — puis
+`assets/js/contract-print.js` découpe le document en pages A4 réelles :
+
+- en-tête courant sur les pages 2 et suivantes ;
+- pied de page identique partout : numéro, site, `Page X / Y`, « Confidentiel » ;
+- aucun titre orphelin en bas de page, tableaux coupés entre deux lignes avec
+  en-tête répété, fin du contrat (signatures + QR) d'un seul tenant.
+
+### Code QR
+
+Optionnel, éteint par défaut (page « Modèles »). L'encodeur
+(`includes/contract-qr.php`) est écrit dans le plugin : un QR servi par un
+service tiers devient un carré vide le jour où ce service ferme, et un contrat
+se réimprime des années plus tard. Sortie SVG, donc net à l'impression.
+Conformité vérifiée matrice par matrice contre une implémentation de référence
+dans `tests/contract-qr.test.php`.
 
 ## Développement local
 

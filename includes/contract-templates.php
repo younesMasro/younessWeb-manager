@@ -22,12 +22,24 @@ if ( ! defined( 'ABSPATH' ) ) exit;
    LE PRESTATAIRE (partie « DE » du contrat)
 ============================================================ */
 
-/** Coordonnées de l'agence, surchargeables depuis la page Contrats. */
+/**
+ * Coordonnées du prestataire, surchargeables depuis la page Contrats.
+ *
+ * Le prestataire est un DESIGNER FREELANCE, pas une société. Les champs
+ * légaux d'entreprise (ICE, RC, IF) existent mais restent VIDES par défaut :
+ * rien ne doit apparaître sur le document tant qu'un numéro n'a pas été saisi.
+ * Le jour où le statut auto-entrepreneur arrive, il suffit de remplir le champ
+ * pour qu'il s'affiche — aucun code à toucher.
+ */
 function vb_contract_provider() {
     $defaults = [
         'name'     => 'YounessWeb',
+        'tagline'  => 'Web Design & Development',
         'legal'    => 'Youness Masroure',
-        'legal_id' => '',
+        'legal_id' => '',   // champ historique (ICE / RC mélangés) — conservé
+        'ice'      => '',   // optionnel : n'apparaît que s'il est rempli
+        'rc'       => '',
+        'if'       => '',
         'address'  => '',
         'city'     => 'Casablanca',
         'phone'    => '+212 774-654464',
@@ -41,6 +53,24 @@ function vb_contract_provider() {
     foreach ( $defaults as $k => $v ) {
         $custom = isset( $saved[ $k ] ) ? trim( (string) $saved[ $k ] ) : '';
         $out[ $k ] = $custom !== '' ? $custom : $v;
+    }
+    return $out;
+}
+
+/**
+ * Mentions légales du prestataire réellement renseignées, prêtes à afficher.
+ * Un freelance sans société n'en a aucune : le tableau revient vide et le
+ * document n'affiche AUCUN libellé — pas de « ICE : — » sur un contrat.
+ *
+ * @return array<string,string> libellé => valeur
+ */
+function vb_contract_provider_legal_lines( $provider = null ) {
+    $p    = $provider ?: vb_contract_provider();
+    $map  = [ 'legal_id' => 'ICE / RC', 'ice' => 'ICE', 'rc' => 'RC', 'if' => 'IF' ];
+    $out  = [];
+    foreach ( $map as $key => $label ) {
+        $v = trim( (string) ( $p[ $key ] ?? '' ) );
+        if ( $v !== '' ) $out[ $label ] = $v;
     }
     return $out;
 }
@@ -86,7 +116,7 @@ function vb_contract_default_templates() {
         'maintenance' => [
             'label'                => 'Maintenance / Suivi mensuel',
             'icon'                 => '🔧',
-            'title'                => 'Contrat de maintenance et de suivi',
+            'title'                => 'Contrat de maintenance et suivi technique',
             'deposit_percent'      => 0,
             'delivery_days'        => 0,
             'revisions'            => 0,
@@ -108,7 +138,7 @@ function vb_contract_default_templates() {
         'full' => [
             'label'                => 'Création + maintenance',
             'icon'                 => '📦',
-            'title'                => 'Contrat de création de site web et de maintenance',
+            'title'                => 'Contrat de création et de maintenance de site web',
             'deposit_percent'      => 50,
             'delivery_days'        => 21,
             'revisions'            => 2,
@@ -129,6 +159,64 @@ function vb_contract_default_templates() {
 }
 
 /* ============================================================
+   TYPE RÉEL DU DOCUMENT
+============================================================ */
+
+/**
+ * Type réel d'un contrat : « creation », « maintenance » ou « full ».
+ *
+ * Le modèle choisi ne suffit pas à décrire le document. Un modèle « création »
+ * dont la clause de maintenance est active EST un contrat mixte — c'est
+ * exactement l'incohérence qui produisait un titre « Contrat de création de
+ * site web » au-dessus d'un article consacré à la maintenance.
+ *
+ * @param string     $template_key
+ * @param bool|null  $maintenance null = déduit du modèle
+ */
+function vb_contract_type_key( $template_key, $maintenance = null ) {
+    $templates = vb_contract_templates();
+    $key       = isset( $templates[ $template_key ] ) ? $template_key : 'creation';
+
+    if ( $maintenance === null ) $maintenance = ! empty( $templates[ $key ]['maintenance'] );
+
+    if ( $key === 'maintenance' ) return 'maintenance';   // maintenance seule
+    return $maintenance ? 'full' : 'creation';
+}
+
+/** Type réel déduit d'un contrat complet (objet ou tableau). */
+function vb_contract_type( $contract ) {
+    $c = (object) $contract;
+    return vb_contract_type_key(
+        $c->template_key ?? 'creation',
+        ! empty( $c->maintenance_enabled ) && floatval( $c->maintenance_price ?? 0 ) > 0
+    );
+}
+
+/**
+ * Titre à donner à un contrat d'après son type réel. Un titre personnalisé sur
+ * le modèle correspondant fait toujours foi (vb_contract_templates()).
+ */
+function vb_contract_title_for( $template_key, $maintenance = null ) {
+    $type      = vb_contract_type_key( $template_key, $maintenance );
+    $templates = vb_contract_templates();
+    return $templates[ $type ]['title'] ?? $templates['creation']['title'];
+}
+
+/**
+ * Titre effectivement imprimé. Le titre SNAPSHOTÉ dans la ligne du contrat
+ * fait foi — on ne réécrit jamais l'en-tête d'un document déjà rédigé. Le
+ * titre déduit ne sert que de secours pour les contrats sans titre.
+ */
+function vb_contract_document_title( $contract ) {
+    $c     = (object) $contract;
+    $title = trim( (string) ( $c->title ?? '' ) );
+    return $title !== '' ? $title : vb_contract_title_for(
+        $c->template_key ?? 'creation',
+        ! empty( $c->maintenance_enabled ) && floatval( $c->maintenance_price ?? 0 ) > 0
+    );
+}
+
+/* ============================================================
    CORPS DES CONTRATS
 ============================================================ */
 
@@ -136,7 +224,9 @@ function vb_contract_body_creation() {
     return <<<'TXT'
 ARTICLE 1 — OBJET DU CONTRAT
 Le présent contrat a pour objet la réalisation, par le PRESTATAIRE et pour le
-compte du CLIENT, d'un site web de type « {{site_type}} ».
+compte du CLIENT, d'un site web de type « {{site_type}} ». {{#maintenance}}Il couvre
+également la maintenance et le suivi technique du site après sa mise en ligne,
+dans les conditions fixées ci-après.{{/maintenance}}
 Les prestations comprises sont détaillées à l'article 2.
 
 ARTICLE 2 — PRESTATIONS COMPRISES
@@ -493,17 +583,26 @@ function vb_contract_placeholders( $contract ) {
         '{{provider_phone}}'    => $p['phone'],
         '{{provider_email}}'    => $p['email'],
         '{{provider_website}}'  => $p['website'],
+        '{{provider_tagline}}'  => $p['tagline'],
+        '{{provider_ice}}'      => $p['ice'],
+        '{{provider_rc}}'       => $p['rc'],
+        '{{provider_if}}'       => $p['if'],
 
         // Client
         '{{client_name}}'     => $c->client_name ?? '',
+        '{{client_company}}'  => $c->client_company ?? '',
         '{{client_phone}}'    => $c->client_phone ?? '',
         '{{client_email}}'    => $c->client_email ?? '',
+        '{{client_address}}'  => $c->client_address ?? '',
         '{{client_city}}'     => $c->client_city ?? '',
+        '{{client_country}}'  => $c->client_country ?? '',
         '{{client_legal_id}}' => $c->client_legal_id ?? '',
+        '{{client_ice}}'      => $c->client_ice ?? '',
+        '{{client_rc}}'       => $c->client_rc ?? '',
 
         // Document
         '{{contract_number}}' => $c->number ?? '',
-        '{{contract_title}}'  => $c->title ?? '',
+        '{{contract_title}}'  => vb_contract_document_title( $c ),
         '{{issue_date}}'      => $fmt_date( $c->issue_date ?? '' ),
         '{{signed_date}}'     => $fmt_date( $c->signed_date ?? '' ),
         '{{today}}'           => date( 'd/m/Y' ),
@@ -530,7 +629,11 @@ function vb_contract_placeholders( $contract ) {
         '{{maintenance_price}}'  => vb_contract_money( $maint_price ),
         '{{maintenance_yearly}}' => vb_contract_money( $maint_price * 12 ),
         '{{maintenance_months}}' => $maint_months,
+        '{{maintenance_total}}'  => vb_contract_money( $maint_price * $maint_months ),
         '{{maintenance_start}}'  => $fmt_date( $c->maintenance_start ?? '' ),
+        '{{maintenance_end}}'    => ( $c->maintenance_start ?? '' ) && $maint_months > 0
+            ? date( 'd/m/Y', strtotime( $c->maintenance_start . ' +' . $maint_months . ' months' ) )
+            : '—',
 
         // Juridique
         '{{jurisdiction}}'   => ( $c->jurisdiction ?? '' ) ?: $p['city'],
@@ -547,13 +650,38 @@ function vb_contract_format_scope( $scope ) {
 }
 
 /**
+ * Renumérote les articles pour refermer les trous laissés par les blocs
+ * conditionnels : sans maintenance, le modèle « création » affichait
+ * ARTICLE 11 puis ARTICLE 13. Un document qui saute un numéro donne
+ * l'impression qu'on a arraché une page.
+ *
+ * Le corps ne contient AUCUN renvoi à un numéro d'article : les renvois sont
+ * rédigés en toutes lettres (« à l'article 2 » n'est jamais conditionnel).
+ * La renumérotation est donc purement cosmétique.
+ */
+function vb_contract_renumber_articles( $body ) {
+    $n = 0;
+    return preg_replace_callback(
+        '/^(\h*)ARTICLE\h+\d+\h*(—|-)/mu',
+        function ( $m ) use ( &$n ) { $n++; return $m[1] . 'ARTICLE ' . $n . ' ' . $m[2]; },
+        (string) $body
+    );
+}
+
+/**
  * Rend le corps d'un contrat : blocs conditionnels puis substitution.
  *
  * L'ordre compte. Les blocs sont résolus AVANT les placeholders, sinon un
  * {{maintenance_price}} injecté à l'intérieur d'un bloc désactivé resterait
  * visible dans le document final.
+ *
+ * @param object|array $contract
+ * @param string|null  $body  corps explicite (aperçu d'un modèle)
+ * @param array        $extra placeholders surchargés — sert au rendu HTML,
+ *                            qui remplace certains blocs texte par des
+ *                            tableaux. Aucun appel existant n'est affecté.
  */
-function vb_contract_render( $contract, $body = null ) {
+function vb_contract_render( $contract, $body = null, array $extra = [] ) {
     $c = (object) $contract;
 
     if ( $body === null ) {
@@ -577,7 +705,13 @@ function vb_contract_render( $contract, $body = null ) {
         }, $body );
     }
 
-    $body = strtr( $body, vb_contract_placeholders( $c ) );
+    // Un contrat SIGNÉ garde la mise en forme sous laquelle il a été signé,
+    // numéros d'articles compris : le client détient un exemplaire papier qui
+    // renvoie à « l'article 13 ». On ne renumérote donc que les documents
+    // encore modifiables.
+    if ( ! vb_contract_is_locked( $c ) ) $body = vb_contract_renumber_articles( $body );
+
+    $body = strtr( $body, $extra + vb_contract_placeholders( $c ) );
 
     // Un bloc retiré laisse un trou de plusieurs lignes vides : on referme.
     $body = preg_replace( "/\n{3,}/", "\n\n", $body );

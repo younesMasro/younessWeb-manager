@@ -48,7 +48,7 @@ function vb_contract_statuses() {
  * document qui fait foi. On le repasse en brouillon pour le corriger.
  */
 function vb_contract_is_locked( $contract ) {
-    $status = is_object( $contract ) ? $contract->status : ( $contract['status'] ?? '' );
+    $status = is_object( $contract ) ? ( $contract->status ?? '' ) : ( $contract['status'] ?? '' );
     return in_array( $status, [ 'signed', 'completed' ], true );
 }
 
@@ -68,10 +68,15 @@ function vb_create_contracts_table() {
         template_key         VARCHAR(50)  DEFAULT 'creation',
         title                VARCHAR(255) DEFAULT '',
         client_name          VARCHAR(200) NOT NULL,
+        client_company       VARCHAR(200) DEFAULT '',
         client_phone         VARCHAR(50)  DEFAULT '',
         client_email         VARCHAR(200) DEFAULT '',
+        client_address       VARCHAR(255) DEFAULT '',
         client_city          VARCHAR(100) DEFAULT '',
+        client_country       VARCHAR(100) DEFAULT '',
         client_legal_id      VARCHAR(100) DEFAULT '',
+        client_ice           VARCHAR(100) DEFAULT '',
+        client_rc            VARCHAR(100) DEFAULT '',
         site_type            VARCHAR(100) DEFAULT '',
         site_url             VARCHAR(500) DEFAULT '',
         scope                LONGTEXT     DEFAULT NULL,
@@ -104,6 +109,23 @@ function vb_create_contracts_table() {
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta( $sql );
+
+    // Filet de sécurité, même principe que vb_create_tables() : garantit que
+    // les colonnes ajoutées après coup existent bien, même si dbDelta n'a pas
+    // pu les créer. Purement ADDITIF — aucune colonne existante n'est touchée,
+    // et une sauvegarde antérieure se restaure sans rien perdre (les nouvelles
+    // colonnes restent simplement vides).
+    $existing = (array) $wpdb->get_col( "DESC $table", 0 );
+    $added    = [
+        'client_company' => "ALTER TABLE $table ADD COLUMN client_company VARCHAR(200) DEFAULT '' AFTER client_name",
+        'client_address' => "ALTER TABLE $table ADD COLUMN client_address VARCHAR(255) DEFAULT '' AFTER client_email",
+        'client_country' => "ALTER TABLE $table ADD COLUMN client_country VARCHAR(100) DEFAULT '' AFTER client_city",
+        'client_ice'     => "ALTER TABLE $table ADD COLUMN client_ice VARCHAR(100) DEFAULT '' AFTER client_legal_id",
+        'client_rc'      => "ALTER TABLE $table ADD COLUMN client_rc VARCHAR(100) DEFAULT '' AFTER client_ice",
+    ];
+    foreach ( $added as $col => $alter ) {
+        if ( ! in_array( $col, $existing, true ) ) $wpdb->query( $alter );
+    }
 }
 
 /* ============================================================
@@ -262,10 +284,15 @@ function vb_save_contract( $data, $id = 0 ) {
         'template_key'         => sanitize_text_field( $data['template_key'] ?? 'creation' ),
         'title'                => sanitize_text_field( $data['title'] ?? '' ),
         'client_name'          => sanitize_text_field( $data['client_name'] ?? '' ),
+        'client_company'       => sanitize_text_field( $data['client_company'] ?? '' ),
         'client_phone'         => sanitize_text_field( $data['client_phone'] ?? '' ),
         'client_email'         => sanitize_email( $data['client_email'] ?? '' ),
+        'client_address'       => sanitize_text_field( $data['client_address'] ?? '' ),
         'client_city'          => sanitize_text_field( $data['client_city'] ?? '' ),
+        'client_country'       => sanitize_text_field( $data['client_country'] ?? '' ),
         'client_legal_id'      => sanitize_text_field( $data['client_legal_id'] ?? '' ),
+        'client_ice'           => sanitize_text_field( $data['client_ice'] ?? '' ),
+        'client_rc'            => sanitize_text_field( $data['client_rc'] ?? '' ),
         'site_type'            => sanitize_text_field( $data['site_type'] ?? '' ),
         'site_url'             => esc_url_raw( $data['site_url'] ?? '' ),
         'scope'                => sanitize_textarea_field( $data['scope'] ?? '' ),
@@ -294,6 +321,15 @@ function vb_save_contract( $data, $id = 0 ) {
     // sur un document qui part chez le client.
     if ( $fields['deposit_amount'] > $fields['amount_total'] ) {
         $fields['deposit_amount'] = $fields['amount_total'];
+    }
+
+    // Un titre vide est déduit du type réel du contrat. Un titre saisi n'est
+    // JAMAIS réécrit : c'est une donnée figée du document.
+    if ( $fields['title'] === '' ) {
+        $fields['title'] = vb_contract_title_for(
+            $fields['template_key'],
+            $fields['maintenance_enabled'] && $fields['maintenance_price'] > 0
+        );
     }
 
     if ( $fields['client_name'] === '' ) return false;
@@ -354,12 +390,20 @@ function vb_contract_prefill_from_project( $project_id, $template_key = 'creatio
         'number'               => vb_next_contract_number(),
         'project_id'           => intval( $p->id ),
         'template_key'         => $template_key,
-        'title'                => $tpl['title'],
+        // Le titre suit le TYPE RÉEL du document : un modèle « création » dont
+        // la maintenance est activée par le projet est un contrat mixte, et
+        // doit s'annoncer comme tel dès la première ligne.
+        'title'                => vb_contract_title_for( $template_key, $maintenance ),
         'client_name'          => $p->client_name,
+        'client_company'       => '',
         'client_phone'         => $p->client_phone,
         'client_email'         => $p->client_email,
+        'client_address'       => '',
         'client_city'          => $p->client_city,
+        'client_country'       => '',
         'client_legal_id'      => '',
+        'client_ice'           => '',
+        'client_rc'            => '',
         'site_type'            => $p->site_type,
         'site_url'             => $p->site_url,
         'scope'                => $tpl['scope'],

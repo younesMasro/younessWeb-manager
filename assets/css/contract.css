@@ -1,0 +1,391 @@
+/* ============================================================
+   CONTRAT — feuille de style du DOCUMENT — v2.8
+
+   Une seule feuille pour l'aperçu écran ET la fenêtre d'impression.
+   Deux feuilles séparées finissent toujours par diverger, et on découvre
+   l'écart sur le papier, chez le client.
+
+   Découpage :
+     .vb-ct-doc    typographie du document (partagée écran / impression)
+     .vb-page      la feuille A4 et ses en-têtes répétés (impression)
+
+   Couleur de marque réservée aux titres, à l'en-tête et aux petits accents.
+   Le corps reste noir : c'est ce qui s'imprime le mieux, y compris en
+   photocopie et en fax — un contrat voyage souvent mal.
+============================================================ */
+
+.vb-ct-doc {
+    --ct-ink:    #111827;
+    --ct-soft:   #4b5563;
+    --ct-muted:  #6b7280;
+    --ct-line:   #dfe3ea;
+    --ct-rule:   #c8cdd6;
+    --ct-brand:  #4f46e5;
+    --ct-tint:   #f7f8fb;
+
+    font-family: Georgia, "Times New Roman", "Noto Serif", serif;
+    font-size: 13.5px;
+    line-height: 1.68;
+    color: var(--ct-ink);
+    text-rendering: optimizeLegibility;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Police sans-serif système pour tout ce qui est « appareil » du document :
+   en-têtes, étiquettes, tableaux, pieds de page. Aucune police distante. */
+.vb-ct-doc .vb-ct-brand-name,
+.vb-ct-doc .vb-ct-brand-tagline,
+.vb-ct-doc .vb-ct-brand-contact,
+.vb-ct-doc .vb-ct-doc-type,
+.vb-ct-doc .vb-ct-meta-table,
+.vb-ct-doc .vb-ct-party-label,
+.vb-ct-doc .vb-ct-party-key,
+.vb-ct-doc .vb-ct-article-n,
+.vb-ct-doc .vb-ct-table,
+.vb-ct-doc .vb-ct-section-title,
+.vb-ct-doc .vb-ct-sign-role,
+.vb-ct-doc .vb-ct-sign-key,
+.vb-ct-doc .vb-ct-sign-hint,
+.vb-ct-doc .vb-ct-qr-text,
+.vb-page-foot, .vb-run-head {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ── En-tête ───────────────────────────────────────────── */
+
+.vb-ct-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 28px;
+    padding-bottom: 14px;
+    border-bottom: 2px solid var(--ct-brand);
+    margin-bottom: 26px;
+}
+.vb-ct-brand { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
+.vb-ct-logo  { height: 46px; width: auto; object-fit: contain; flex: 0 0 auto; }
+
+.vb-ct-brand-name {
+    font-size: 17px; font-weight: 700; letter-spacing: -.01em;
+    color: var(--ct-ink); line-height: 1.2;
+}
+.vb-ct-brand-tagline {
+    font-size: 9.5px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .16em; color: var(--ct-brand); margin-top: 3px;
+}
+.vb-ct-brand-contact {
+    margin-top: 7px; font-size: 10px; color: var(--ct-muted); line-height: 1.7;
+}
+.vb-ct-brand-contact .vb-ct-dot { margin: 0 6px; color: var(--ct-rule); }
+
+.vb-ct-meta { flex: 0 0 auto; text-align: right; }
+.vb-ct-doc-type {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .3em; color: var(--ct-brand); margin-bottom: 8px;
+}
+.vb-ct-meta-table { font-size: 10.5px; border-collapse: collapse; margin-left: auto; }
+.vb-ct-meta-table th {
+    font-weight: 500; color: var(--ct-muted); text-align: right;
+    padding: 2px 10px 2px 0; white-space: nowrap;
+}
+.vb-ct-meta-table td { text-align: right; padding: 2px 0; white-space: nowrap; }
+
+/* ── Titre ─────────────────────────────────────────────── */
+
+.vb-ct-titleblock { text-align: center; margin: 0 0 26px; }
+.vb-ct-title {
+    font-size: 21px; font-weight: 700; line-height: 1.25;
+    letter-spacing: .01em; margin: 0; padding: 0;
+    color: var(--ct-ink);
+}
+.vb-ct-title-rule {
+    width: 56px; height: 3px; border-radius: 2px;
+    background: var(--ct-brand); margin: 12px auto 0;
+}
+
+/* ── Parties ───────────────────────────────────────────── */
+
+.vb-ct-parties { display: flex; gap: 20px; margin-bottom: 26px; }
+.vb-ct-party {
+    flex: 1 1 0; min-width: 0;
+    background: var(--ct-tint);
+    border: 1px solid var(--ct-line);
+    border-left: 3px solid var(--ct-brand);
+    border-radius: 3px;
+    padding: 13px 16px;
+    font-size: 12px; line-height: 1.62;
+}
+.vb-ct-party-label {
+    font-size: 8.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .14em; color: var(--ct-brand); margin-bottom: 8px;
+}
+.vb-ct-party-line { margin: 0; }
+.vb-ct-party-name { font-size: 13.5px; font-weight: 700; }
+.vb-ct-party-key {
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--ct-muted);
+}
+
+/* ── Titres de section et d'article ────────────────────── */
+
+.vb-ct-section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .14em; color: var(--ct-brand);
+    margin: 0 0 12px; padding: 0;
+}
+
+.vb-ct-article {
+    margin: 26px 0 10px; padding: 0 0 6px;
+    border-bottom: 1px solid var(--ct-line);
+    font-size: 14px; font-weight: 700; line-height: 1.35;
+    display: flex; align-items: baseline; gap: 10px;
+    /* Un titre d'article ne reste jamais seul en bas de page. */
+    break-after: avoid-page; page-break-after: avoid;
+    break-inside: avoid; page-break-inside: avoid;
+}
+.vb-ct-article:first-child { margin-top: 0; }
+.vb-ct-article-n {
+    flex: 0 0 auto;
+    font-size: 8.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .12em; color: var(--ct-brand);
+    border: 1px solid currentColor; border-radius: 2px;
+    padding: 2px 6px; white-space: nowrap;
+}
+.vb-ct-article-t { flex: 1 1 auto; min-width: 0; }
+
+/* ── Corps ─────────────────────────────────────────────── */
+
+.vb-ct-body { margin-bottom: 8px; }
+.vb-ct-p {
+    margin: 0 0 10px; padding: 0;
+    text-align: justify; hyphens: auto;
+    orphans: 3; widows: 3;
+}
+.vb-ct-p:last-child { margin-bottom: 0; }
+
+.vb-ct-ul { margin: 0 0 12px; padding: 0 0 0 4px; list-style: none; }
+.vb-ct-ul li {
+    position: relative; padding-left: 18px; margin-bottom: 5px;
+    text-align: justify;
+}
+.vb-ct-ul li::before {
+    content: ""; position: absolute; left: 2px; top: .62em;
+    width: 8px; height: 1.5px; background: var(--ct-rule);
+}
+
+.vb-ct-muted { color: var(--ct-muted); }
+
+/* ── Liste à cocher (livrables, prestations incluses) ───── */
+
+.vb-ct-check {
+    margin: 0 0 14px; padding: 12px 16px;
+    list-style: none;
+    background: var(--ct-tint);
+    border: 1px solid var(--ct-line); border-radius: 3px;
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 22px;
+    break-inside: avoid; page-break-inside: avoid;
+}
+.vb-ct-check li {
+    display: flex; align-items: flex-start; gap: 9px;
+    font-size: 12px; line-height: 1.5;
+}
+.vb-ct-check-mark {
+    flex: 0 0 auto; margin-top: .12em;
+    color: var(--ct-brand); font-weight: 700; font-size: 12px;
+}
+
+/* ── Tableaux ──────────────────────────────────────────── */
+
+.vb-ct-table {
+    width: 100%; border-collapse: collapse;
+    margin: 0 0 16px; font-size: 11.5px;
+    break-inside: auto;
+}
+.vb-ct-table-caption,
+caption.vb-ct-table-caption {
+    caption-side: top; text-align: left;
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .12em; color: var(--ct-muted);
+    padding: 0 0 6px;
+}
+.vb-ct-table thead th {
+    text-align: left; font-weight: 600; font-size: 9px;
+    text-transform: uppercase; letter-spacing: .1em; color: var(--ct-muted);
+    padding: 0 10px 6px; border-bottom: 1.5px solid var(--ct-ink);
+    white-space: nowrap;
+}
+.vb-ct-table tbody td {
+    padding: 7px 10px; border-bottom: 1px solid var(--ct-line);
+    vertical-align: top;
+}
+.vb-ct-table tbody tr { break-inside: avoid; page-break-inside: avoid; }
+.vb-ct-table .vb-ct-num  { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.vb-ct-table .vb-ct-rank { text-align: center; width: 30px; color: var(--ct-muted); }
+
+.vb-ct-table tfoot .vb-ct-total-row th,
+.vb-ct-table tfoot .vb-ct-total-row td {
+    padding: 9px 10px;
+    border-top: 1.5px solid var(--ct-ink);
+    border-bottom: none;
+    font-weight: 700; font-size: 12px; text-align: left;
+}
+.vb-ct-table tfoot .vb-ct-total-row td.vb-ct-num { text-align: right; }
+.vb-ct-table-money { max-width: 100%; }
+
+.vb-ct-status {
+    display: inline-block; font-size: 9px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .08em;
+    padding: 2px 7px; border-radius: 10px;
+    border: 1px solid var(--ct-rule); color: var(--ct-muted);
+    white-space: nowrap;
+}
+.vb-ct-status-paid { border-color: #0f766e; color: #0f766e; }
+
+/* ── Clôture et signatures ─────────────────────────────── */
+
+/* Clôture + signatures + QR : la fin du contrat, d'un seul tenant. */
+.vb-ct-endblock { margin-top: 24px; break-inside: avoid; page-break-inside: avoid; }
+.vb-ct-closing  { margin-bottom: 18px; }
+
+.vb-ct-signatures {
+    display: flex; gap: 26px;
+    break-inside: avoid; page-break-inside: avoid;
+}
+.vb-ct-sign-box {
+    flex: 1 1 0; min-width: 0;
+    border: 1px solid var(--ct-line); border-radius: 4px;
+    padding: 14px 16px 12px;
+}
+.vb-ct-sign-role {
+    font-size: 8.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .14em; color: var(--ct-brand); margin-bottom: 6px;
+}
+.vb-ct-sign-name { font-size: 13px; font-weight: 700; line-height: 1.3; }
+.vb-ct-sign-org  { font-size: 11px; color: var(--ct-muted); margin-top: 1px; }
+
+.vb-ct-sign-fields { margin-top: 14px; }
+.vb-ct-sign-field { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 12px; }
+.vb-ct-sign-field-tall { align-items: flex-end; min-height: 62px; margin-bottom: 6px; }
+.vb-ct-sign-key {
+    flex: 0 0 58px;
+    font-size: 9px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--ct-muted);
+}
+.vb-ct-sign-rule { flex: 1 1 auto; border-bottom: 1px solid var(--ct-rule); height: 1px; }
+.vb-ct-sign-hint { font-size: 9px; color: var(--ct-muted); font-style: italic; }
+
+/* ── QR de vérification ────────────────────────────────── */
+
+.vb-ct-qr {
+    display: flex; align-items: center; gap: 16px;
+    margin-top: 22px; padding: 14px 16px;
+    border: 1px solid var(--ct-line); border-radius: 4px;
+    background: var(--ct-tint);
+    break-inside: avoid; page-break-inside: avoid;
+}
+.vb-ct-qr-img { flex: 0 0 auto; line-height: 0; }
+.vb-ct-qr-img svg { display: block; width: 82px; height: 82px; }
+.vb-ct-qr-title {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .14em; color: var(--ct-brand); margin-bottom: 4px;
+}
+.vb-ct-qr-sub { font-size: 11px; color: var(--ct-soft); line-height: 1.5; }
+.vb-ct-qr-url {
+    font-size: 9.5px; color: var(--ct-muted); margin-top: 4px;
+    word-break: break-all;
+}
+
+/* ============================================================
+   APERÇU ÉCRAN — la feuille posée dans l'admin
+============================================================ */
+
+.vb-contract-paper {
+    background: #fff;
+    border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 40px 46px; max-width: 880px; margin: 0 auto;
+    box-shadow: 0 4px 24px rgba(15, 23, 42, .07);
+}
+
+/* Adaptation aux petits écrans — STRICTEMENT réservée à l'aperçu.
+   Une feuille A4 fait ~794 px de large : sans le préfixe `screen` et sans
+   restriction à .vb-contract-paper, ces règles se déclencheraient PENDANT
+   l'impression et empileraient l'en-tête du contrat sur le papier. */
+@media screen and (max-width: 900px) {
+    .vb-contract-paper { padding: 24px 20px; }
+    .vb-contract-paper .vb-ct-head,
+    .vb-contract-paper .vb-ct-parties,
+    .vb-contract-paper .vb-ct-signatures { flex-direction: column; gap: 16px; }
+    .vb-contract-paper .vb-ct-meta { text-align: left; }
+    .vb-contract-paper .vb-ct-meta-table { margin-left: 0; }
+    .vb-contract-paper .vb-ct-meta-table th,
+    .vb-contract-paper .vb-ct-meta-table td { text-align: left; }
+    .vb-contract-paper .vb-ct-check { grid-template-columns: 1fr; }
+    .vb-contract-paper .vb-ct-qr { flex-direction: column; align-items: flex-start; }
+}
+
+/* Un tableau ne doit jamais élargir la page sur un petit écran. */
+@media screen and (max-width: 700px) {
+    .vb-contract-paper .vb-ct-table { display: block; overflow-x: auto; }
+}
+
+/* ============================================================
+   FENÊTRE D'IMPRESSION — pages A4 réelles
+   Le paginateur (assets/js/contract-print.js) répartit le document
+   dans ces boîtes : marges fixes, en-tête courant et pied de page
+   identiques sur chaque feuille.
+============================================================ */
+
+@page { size: A4; margin: 0; }
+
+body.vb-print {
+    margin: 0; padding: 0;
+    background: #eef1f6;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+.vb-page {
+    width: 210mm; height: 297mm;
+    box-sizing: border-box;
+    margin: 0 auto 8mm;
+    padding: 15mm 17mm 11mm;
+    background: #fff;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 2px 14px rgba(15, 23, 42, .14);
+    page-break-after: always; break-after: page;
+}
+.vb-page:last-child { page-break-after: auto; break-after: auto; margin-bottom: 0; }
+
+.vb-page-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
+/* En-tête courant des pages 2 et suivantes : le lecteur doit savoir de
+   quel document vient la feuille qu'il tient, même désolidarisée. */
+.vb-run-head {
+    flex: 0 0 auto;
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 20px;
+    padding-bottom: 4mm; margin-bottom: 7mm;
+    border-bottom: 1px solid var(--ct-line, #dfe3ea);
+    font-size: 8pt; color: #6b7280;
+}
+.vb-run-head strong { color: #111827; font-weight: 600; }
+
+.vb-page-foot {
+    flex: 0 0 auto;
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 16px;
+    padding-top: 3mm; margin-top: 6mm;
+    border-top: 1px solid var(--ct-line, #dfe3ea);
+    font-size: 7.5pt; color: #6b7280;
+    letter-spacing: .01em;
+}
+.vb-page-foot .vb-foot-mid { flex: 1 1 auto; text-align: center; }
+.vb-page-foot .vb-foot-right { text-align: right; white-space: nowrap; }
+.vb-foot-confidential { text-transform: uppercase; letter-spacing: .1em; font-size: 7pt; }
+
+@media print {
+    body.vb-print { background: #fff; }
+    .vb-page { margin: 0; box-shadow: none; }
+    .vb-no-print { display: none !important; }
+}
